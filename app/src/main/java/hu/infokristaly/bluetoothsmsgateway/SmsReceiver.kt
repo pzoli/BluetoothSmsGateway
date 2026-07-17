@@ -24,23 +24,17 @@ class SmsReceiver: BroadcastReceiver(){
             val pdus =
                 bundle["pdus"] as Array<*>
 
+            val format = bundle.getString("format")
 
             pdus.forEach {
-
-
-                val sms =
-                    SmsMessage.createFromPdu(
-                        it as ByteArray
-                    )
-
-
+                val sms = SmsMessage.createFromPdu(
+                    it as ByteArray,
+                    format
+                )
                 val sender =
                     sms.originatingAddress
-
-
                 val text =
                     sms.messageBody
-
 
                 // TODO:
                 // BLE Notification küldése Mac felé
