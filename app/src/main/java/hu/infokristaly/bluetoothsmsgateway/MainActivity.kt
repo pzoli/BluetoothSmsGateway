@@ -18,7 +18,7 @@ import hu.infokristaly.bluetoothsmsgateway.ui.theme.BluetoothSmsGatewayTheme
 class MainActivity : ComponentActivity() {
     private lateinit var bleServer: BleServer
 
-    @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT])
+    @RequiresPermission(allOf = [Manifest.permission.RECEIVE_SMS, Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT])
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

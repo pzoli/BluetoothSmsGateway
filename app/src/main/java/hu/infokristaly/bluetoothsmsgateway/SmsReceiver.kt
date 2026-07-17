@@ -7,48 +7,47 @@ import android.content.Intent
 import android.telephony.SmsMessage
 
 
-class SmsReceiver:
-    BroadcastReceiver(){
-
+class SmsReceiver: BroadcastReceiver(){
 
     @SuppressLint("UnsafeProtectedBroadcastReceiver")
     override fun onReceive(
-        context:Context,
+        context:Context?,
         intent:Intent
-    ){
+    ) {
+
+        if ("android.provider.Telephony.SMS_RECEIVED" == intent.getAction()) {
+
+            val bundle =
+                intent.extras ?: return
 
 
-        val bundle =
-            intent.extras ?: return
+            val pdus =
+                bundle["pdus"] as Array<*>
 
 
-        val pdus =
-            bundle["pdus"] as Array<*>
+            pdus.forEach {
 
 
-        pdus.forEach {
+                val sms =
+                    SmsMessage.createFromPdu(
+                        it as ByteArray
+                    )
 
 
-            val sms =
-                SmsMessage.createFromPdu(
-                    it as ByteArray
-                )
+                val sender =
+                    sms.originatingAddress
 
 
-            val sender =
-                sms.originatingAddress
+                val text =
+                    sms.messageBody
 
 
-            val text =
-                sms.messageBody
+                // TODO:
+                // BLE Notification küldése Mac felé
 
 
-            // TODO:
-            // BLE Notification küldése Mac felé
-
+            }
 
         }
-
     }
-
 }

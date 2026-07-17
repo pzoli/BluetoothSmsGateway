@@ -38,10 +38,9 @@
             </intent-filter>
         </activity>
         <receiver
-            android:name="hu.infokristaly.bluetoothsmsgateway.SmsReceiver"
+            android:name=".SmsReceiver"
             android:exported="true"
-            android:priority="999"
-            android:permission="android.permission.BROADCAST_SMS">
+            android:priority="999">
 
             <intent-filter>
                 <action android:name="android.provider.Telephony.SMS_RECEIVED"/>
