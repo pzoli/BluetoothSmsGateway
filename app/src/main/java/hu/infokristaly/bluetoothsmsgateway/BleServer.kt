@@ -9,7 +9,13 @@ import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
 import android.content.pm.PackageManager
 import android.os.ParcelUuid
+import android.util.Log
 import androidx.core.app.ActivityCompat
+import hu.infokristaly.bluetoothsmsgateway.ble.BLECodec
+import hu.infokristaly.bluetoothsmsgateway.ble.BLEFramer
+import hu.infokristaly.bluetoothsmsgateway.ble.BLEMessage
+import hu.infokristaly.bluetoothsmsgateway.ble.SendSmsPayload
+import kotlinx.serialization.json.decodeFromJsonElement
 
 class BleServer(
     private val context: Context
@@ -38,12 +44,15 @@ class BleServer(
     fun start(){
 
 
-        server =
-            manager.openGattServer(
-                context,
-                callback
-            )
+        val gattServer =
+            manager.openGattServer(context, callback)
 
+        if (gattServer == null) {
+            Log.e("BLE", "openGattServer returned null")
+            return
+        }
+
+        server = gattServer
 
         val service =
             BluetoothGattService(
@@ -77,7 +86,7 @@ class BleServer(
         startAdvertising()
     }
 
-    @RequiresPermission(Manifest.permission.BLUETOOTH_ADVERTISE)
+    @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT])
     private fun startAdvertising() {
 
         val settings = AdvertiseSettings.Builder()
@@ -86,6 +95,8 @@ class BleServer(
             .setTimeout(0)
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
+
+        adapter.name = "SMSGW"
 
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(true)
@@ -100,14 +111,14 @@ class BleServer(
             object : AdvertiseCallback() {
 
                 override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
-                    android.util.Log.d(
+                    Log.d(
                         "BLE",
                         "Advertising started"
                     )
                 }
 
                 override fun onStartFailure(errorCode: Int) {
-                    android.util.Log.e(
+                    Log.e(
                         "BLE",
                         "Advertising failed: $errorCode"
                     )
@@ -115,6 +126,10 @@ class BleServer(
             }
         )
     }
+
+    private val framer =
+        BLEFramer()
+
 
     private val callback =
         object: BluetoothGattServerCallback(){
@@ -132,14 +147,16 @@ class BleServer(
             ){
 
 
-                val message =
-                    String(value)
+                val messages =
+                    framer.append(value)
 
+                for(text in messages){
 
-                processCommand(
-                    message
-                )
+                    val request =
+                        BLECodec.decode(text)
 
+                    processCommand(request)
+                }
 
                 server.sendResponse(
                     device,
@@ -156,33 +173,27 @@ class BleServer(
 
 
     private fun processCommand(
-        command:String
+        message: BLEMessage
     ){
+        when(message.action){
 
+            "send_sms"->{
 
-        if(command.startsWith("SEND_SMS")){
+                val payload =
+                    BLECodec.json.decodeFromJsonElement<SendSmsPayload>(
+                        message.payload!!
+                    )
 
+                SmsManagerService.send(
 
-            val data =
-                command.split("|")
+                    context,
 
+                    payload.phone,
 
-            val phone =
-                data[1]
-
-
-            val text =
-                data[2]
-
-
-            SmsManagerService.send(
-                context,
-                phone,
-                text
-            )
-
+                    payload.text
+                )
+            }
         }
-
     }
 
 }

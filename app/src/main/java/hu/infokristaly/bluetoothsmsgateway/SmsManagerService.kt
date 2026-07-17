@@ -13,19 +13,18 @@ object SmsManagerService {
         text:String
     ){
 
+        val smsManager =
+            context.getSystemService(SmsManager::class.java)
 
-        val sms =
-            SmsManager.getDefault()
+        val parts = smsManager.divideMessage(text)
 
-
-        sms.sendTextMessage(
+        smsManager.sendMultipartTextMessage(
             phone,
             null,
-            text,
+            parts,
             null,
             null
         )
-
     }
 
 }

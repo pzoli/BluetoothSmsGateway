@@ -1,9 +1,11 @@
 package hu.infokristaly.bluetoothsmsgateway
 
+import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.annotation.RequiresPermission
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -16,6 +18,7 @@ import hu.infokristaly.bluetoothsmsgateway.ui.theme.BluetoothSmsGatewayTheme
 class MainActivity : ComponentActivity() {
     private lateinit var bleServer: BleServer
 
+    @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT])
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -31,6 +34,13 @@ class MainActivity : ComponentActivity() {
         }
         bleServer =
             BleServer(this)
+        requestPermissions(
+            arrayOf(
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.BLUETOOTH_ADVERTISE
+            ),
+            100
+        )
         bleServer.start()
     }
 }
