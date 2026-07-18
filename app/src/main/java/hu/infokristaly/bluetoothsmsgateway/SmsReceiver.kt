@@ -5,11 +5,17 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.telephony.SmsMessage
+import hu.infokristaly.bluetoothsmsgateway.ble.BLEMessage
+import hu.infokristaly.bluetoothsmsgateway.ble.MessageType
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 
 
 class SmsReceiver: BroadcastReceiver(){
 
     @SuppressLint("UnsafeProtectedBroadcastReceiver")
+    @androidx.annotation.RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
     override fun onReceive(
         context:Context?,
         intent:Intent
@@ -36,10 +42,15 @@ class SmsReceiver: BroadcastReceiver(){
                 val text =
                     sms.messageBody
 
-                // TODO:
-                // BLE Notification küldése Mac felé
-
-
+                val event = BLEMessage(
+                    action = "sms_received",
+                    type = MessageType.event,
+                    payload = buildJsonObject {
+                        put("from", JsonPrimitive(sender ?: ""))
+                        put("text", JsonPrimitive(text))
+                    }
+                )
+                BleServer.instance.sendEvent(event)
             }
 
         }

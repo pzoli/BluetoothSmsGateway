@@ -1,6 +1,7 @@
 package hu.infokristaly.bluetoothsmsgateway
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.content.Context
 import androidx.annotation.RequiresPermission
@@ -20,6 +21,15 @@ import kotlinx.serialization.json.decodeFromJsonElement
 class BleServer(
     private val context: Context
 ) {
+    companion object {
+        @SuppressLint("StaticFieldLeak")
+        lateinit var instance: BleServer
+            private set
+    }
+
+    init {
+        instance = this
+    }
 
     private val advertiser by lazy {
         adapter.bluetoothLeAdvertiser
@@ -38,7 +48,7 @@ class BleServer(
     private lateinit var server:
             BluetoothGattServer
 
-
+    private var connectedDevice: BluetoothDevice? = null
 
     @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE])
     fun start(){
@@ -134,6 +144,18 @@ class BleServer(
     private val callback =
         object: BluetoothGattServerCallback(){
 
+            @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+            override fun onConnectionStateChange(
+                device: BluetoothDevice,
+                status: Int,
+                newState: Int
+            ) {
+                if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    connectedDevice = device
+                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    connectedDevice = null
+                }
+            }
 
             @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
             override fun onCharacteristicWriteRequest(
@@ -170,7 +192,29 @@ class BleServer(
 
         }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun sendEvent(message: BLEMessage) {
 
+        val device = connectedDevice ?: return
+
+        val service =
+            server.getService(BleProtocol.SERVICE_UUID) ?: return
+
+        val characteristic =
+            service.getCharacteristic(BleProtocol.EVENT_UUID) ?: return
+
+        val packets = BLECodec.encodeToByteArrayList(message)
+        packets.forEach { packet ->
+
+            characteristic.value = packet
+
+            server.notifyCharacteristicChanged(
+                connectedDevice,
+                characteristic,
+                false
+            )
+        }
+    }
 
     private fun processCommand(
         message: BLEMessage

@@ -1,7 +1,6 @@
 package hu.infokristaly.bluetoothsmsgateway.ble
 
 class BLEFramer {
-
     private val buffer =
         StringBuilder()
 
