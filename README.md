@@ -8,7 +8,8 @@ Kable uses a cross-platform backend (via the btleplug library) to talk to each O
 * Linux: Uses the BlueZ stack via D-Bus.
 * Windows: Uses the WinRT Bluetooth APIs (Windows 10+).
 
-Tested on MacOS 26.5.2 Tahoe, Ubuntu 24.04 LTS, Windows 11
+Clients are tested on MacOS 26.5.2 Tahoe, Ubuntu 24.04 LTS, Windows 11
+Server is tested on Android 12, 16
 
 ## Requirements for Ubuntu/Debian
 You need DBus headers package for Linux:
