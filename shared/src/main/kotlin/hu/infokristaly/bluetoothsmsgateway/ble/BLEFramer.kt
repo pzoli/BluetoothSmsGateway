@@ -6,7 +6,7 @@ class BLEFramer {
     fun append(
         data: ByteArray
     ): List<String> {
-        buffer.append(data.toString(Charsets.UTF_8))
+        buffer.append(data.decodeToString())
         val messages = mutableListOf<String>()
         while (true) {
             val index = buffer.indexOf("\n")

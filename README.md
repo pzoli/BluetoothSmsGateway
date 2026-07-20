@@ -9,6 +9,7 @@ Kable uses a cross-platform backend (via the btleplug library) to talk to each O
 * Windows: Uses the WinRT Bluetooth APIs (Windows 10+).
 
 ## Requirements for Ubuntu/Debian
+You need DBus headers package for Linux:
 ```bash
 sudo apt install libdbus-1-dev
 ```

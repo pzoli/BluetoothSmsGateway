@@ -45,6 +45,14 @@ class MainActivity : ComponentActivity() {
         )
         bleServer.start()
     }
+
+    @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT])
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::bleServer.isInitialized) {
+            bleServer.stop()
+        }
+    }
 }
 
 @Composable

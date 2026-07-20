@@ -23,11 +23,23 @@ fun main(args: Array<String>) {
 fun runBleClient() {
     val client = KableBleClient()
     
+    Runtime.getRuntime().addShutdownHook(Thread {
+        println("\nShutdown hook: stopping BLE client...")
+        runBlocking {
+            client.disconnectSync()
+        }
+    })
+
     println("Starting BLE Client...")
-    client.start { event ->
-        println("\n[EVENT] ${event.action}")
-        if (event.action == "sms_received") {
-            val payload = BLECodec.json.decodeFromJsonElement(SmsReceivedPayload.serializer(), event.payload!!)
+    client.start { message ->
+        if (message.type == MessageType.response) {
+            println("\n[RESPONSE] ${message.status} (ID: ${message.id})")
+            return@start
+        }
+        
+        println("\n[EVENT] ${message.action}")
+        if (message.action == "sms_received") {
+            val payload = BLECodec.json.decodeFromJsonElement(SmsReceivedPayload.serializer(), message.payload!!)
             println("SMS from ${payload.from}: ${payload.text}")
         }
     }

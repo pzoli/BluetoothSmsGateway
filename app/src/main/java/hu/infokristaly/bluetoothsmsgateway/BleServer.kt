@@ -58,7 +58,14 @@ class BleServer(
 
     @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE])
     fun start(){
-
+        if (::server.isInitialized) {
+            Log.d("BLE", "Server already initialized, resetting...")
+            try {
+                server.close()
+            } catch (e: Exception) {
+                Log.e("BLE", "Error closing existing server: ${e.message}")
+            }
+        }
 
         val gattServer =
             manager.openGattServer(context, callback)
@@ -80,8 +87,8 @@ class BleServer(
         val command =
             BluetoothGattCharacteristic(
                 BleProtocol.COMMAND_UUID.toJavaUuid(),
-                BluetoothGattCharacteristic.PROPERTY_WRITE,
-                BluetoothGattCharacteristic.PERMISSION_WRITE
+                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE or BluetoothGattCharacteristic.PROPERTY_READ,
+                BluetoothGattCharacteristic.PERMISSION_WRITE or BluetoothGattCharacteristic.PERMISSION_READ
             )
 
 
@@ -111,7 +118,7 @@ class BleServer(
 
     @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT])
     private fun startAdvertising() {
-
+        stopAdvertising()
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
             .setConnectable(true)
@@ -150,6 +157,24 @@ class BleServer(
         )
     }
 
+    @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT])
+    private fun stopAdvertising() {
+        try {
+            advertiser.stopAdvertising(object : AdvertiseCallback() {})
+        } catch (e: Exception) {
+            Log.e("BLE", "Error stopping advertising: ${e.message}")
+        }
+    }
+
+    @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE])
+    fun stop() {
+        if (::server.isInitialized) {
+            server.close()
+        }
+        stopAdvertising()
+        connectedDevice = null
+    }
+
     private val framer =
         BLEFramer()
 
@@ -157,18 +182,45 @@ class BleServer(
     private val callback =
         object: BluetoothGattServerCallback(){
 
-            @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+            @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE])
             override fun onConnectionStateChange(
                 device: BluetoothDevice,
                 status: Int,
                 newState: Int
             ) {
-                Log.d("BLE", "onConnectionStateChange: $status -> $newState")
+                Log.d("BLE", "onConnectionStateChange: device=${device.address} status=$status (HCI error if non-zero) newState=$newState")
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    if (connectedDevice != null && connectedDevice?.address != device.address) {
+                        Log.w("BLE", "New device connecting (${device.address}) while ${connectedDevice?.address} still connected. Updating...")
+                    }
                     connectedDevice = device
+                    stopAdvertising()
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    connectedDevice = null
+                    if (device.address == connectedDevice?.address) {
+                        connectedDevice = null
+                        Log.d("BLE", "Main device disconnected: ${device.address}")
+                    }
+                    // Restart advertising even if status was not success
+                    Log.d("BLE", "Restarting advertising after disconnect...")
+                    startAdvertising()
                 }
+            }
+
+            @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+            override fun onCharacteristicReadRequest(
+                device: BluetoothDevice,
+                requestId: Int,
+                offset: Int,
+                characteristic: BluetoothGattCharacteristic
+            ) {
+                Log.d("BLE", "Received read request: ${characteristic.uuid}")
+                server.sendResponse(
+                    device,
+                    requestId,
+                    BluetoothGatt.GATT_SUCCESS,
+                    0,
+                    "OK".toByteArray()
+                )
             }
 
             @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
@@ -181,17 +233,21 @@ class BleServer(
                 offset:Int,
                 value:ByteArray
             ){
-
+                Log.d("BLE", "Received write request: ${value.size} bytes (offset: $offset)")
 
                 val messages =
                     framer.append(value)
 
                 for(text in messages){
-
-                    val request =
-                        BLECodec.decode(text)
-
-                    processCommand(request)
+                    try {
+                        val request =
+                            BLECodec.decode(text)
+                        Log.d("BLE", "Decoded message: ${request.action} (ID: ${request.id})")
+                        processCommand(request)
+                    } catch (e: Exception) {
+                        Log.e("BLE", "Error decoding message: ${e.message}")
+                        Log.e("BLE", "Raw text: $text")
+                    }
                 }
 
                 server.sendResponse(
@@ -252,11 +308,12 @@ class BleServer(
             }
             // Small delay to prevent congestion on older devices or fast packets
             if (packets.size > 1) {
-                Thread.sleep(10)
+                Thread.sleep(50)
             }
         }
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun processCommand(
         message: BLEMessage
     ){
@@ -268,6 +325,8 @@ class BleServer(
                     BLECodec.json.decodeFromJsonElement<SendSmsPayload>(
                         message.payload!!
                     )
+                
+                Log.d("BLE", "Sending SMS to ${payload.phone}")
 
                 SmsManagerService.send(
 
@@ -277,6 +336,11 @@ class BleServer(
 
                     payload.text
                 )
+                
+                // Send confirmation back to client
+                if (message.id != null) {
+                    sendEvent(hu.infokristaly.bluetoothsmsgateway.ble.BLEProtocol.ok(message.id!!))
+                }
             }
         }
     }

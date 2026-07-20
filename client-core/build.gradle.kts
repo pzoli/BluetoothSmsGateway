@@ -15,6 +15,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
     
     // Kable core and FFI backend
-    implementation("com.juul.kable:kable-core:0.40.0")
-    implementation("com.juul.kable:kable-btleplug-ffi:0.40.0")
+    implementation(libs.kable.core)
+    implementation(libs.kable.btleplug)
 }

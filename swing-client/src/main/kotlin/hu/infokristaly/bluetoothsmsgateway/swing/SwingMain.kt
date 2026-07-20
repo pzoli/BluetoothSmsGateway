@@ -25,7 +25,18 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     }
 
     private fun setupUI() {
-        defaultCloseOperation = EXIT_ON_CLOSE
+        defaultCloseOperation = DISPOSE_ON_CLOSE
+        
+        addWindowListener(object : java.awt.event.WindowAdapter() {
+            override fun windowClosing(e: java.awt.event.WindowEvent?) {
+                println("Closing application...")
+                runBlocking {
+                    client.disconnectSync()
+                }
+                System.exit(0)
+            }
+        })
+        
         size = Dimension(500, 600)
         setLocationRelativeTo(null)
 
@@ -82,6 +93,11 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     }
 
     private fun handleBleEvent(message: BLEMessage) {
+        if (message.type == hu.infokristaly.bluetoothsmsgateway.ble.MessageType.response) {
+            logArea.append("[RESPONSE] ${message.status} (ID: ${message.id})\n")
+            return
+        }
+        
         logArea.append("[EVENT] ${message.action}\n")
         if (message.action == "sms_received") {
             val payload = BLECodec.json.decodeFromJsonElement(SmsReceivedPayload.serializer(), message.payload!!)
