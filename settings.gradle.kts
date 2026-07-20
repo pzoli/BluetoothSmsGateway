@@ -19,8 +19,13 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url = uri("https://jitpack.io") }
     }
 }
 
 rootProject.name = "BluetoothSmsGateway"
 include(":app")
+include(":shared")
+include(":javase-client")
+include(":client-core")
+include(":swing-client")

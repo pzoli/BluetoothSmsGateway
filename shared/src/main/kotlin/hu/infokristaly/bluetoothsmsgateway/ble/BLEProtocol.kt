@@ -1,0 +1,51 @@
+package hu.infokristaly.bluetoothsmsgateway.ble
+
+import kotlinx.serialization.json.encodeToJsonElement
+
+object BLEProtocol {
+
+    fun sendSms(
+        id: Long,
+        phone: String,
+        text: String
+    ): BLEMessage {
+        return BLEMessage(
+            id = id,
+            type = MessageType.request,
+            action = "send_sms",
+            payload = BLECodec.json.encodeToJsonElement(
+                SendSmsPayload(phone, text)
+            )
+        )
+    }
+
+    fun smsReceived(
+        phone: String,
+        text: String
+    ): BLEMessage {
+        return BLEMessage(
+            type = MessageType.event,
+            action = "sms_received",
+            payload = BLECodec.json.encodeToJsonElement(
+                SmsReceivedPayload(phone, text)
+            )
+        )
+    }
+
+    fun ok(id: Long) = BLEMessage(
+        id = id,
+        type = MessageType.response,
+        status = Status.ok
+    )
+
+    fun error(
+        id: Long,
+        code: String,
+        message: String
+    ) = BLEMessage(
+        id = id,
+        type = MessageType.response,
+        status = Status.error,
+        error = BLEError(code, message)
+    )
+}
