@@ -2,6 +2,8 @@
 This is an Android Studio bluetooth gateway project for Android phones.
 It is advertise BLE service. You can send SMS message from [MacSMSGateway](https://github.com/pzoli/MacSMSGateway)/Java CLI/Swing client and it can forward incoming SMS to this clients.
 
+Source is generated with Google Gemini 3 pre.
+
 The current implementation using Juul Kable is designed to work platform-independently across macOS, Linux, and Windows.
 Kable uses a cross-platform backend (via the btleplug library) to talk to each OS's native Bluetooth stack:
 * macOS: Uses the native Core Bluetooth framework.
