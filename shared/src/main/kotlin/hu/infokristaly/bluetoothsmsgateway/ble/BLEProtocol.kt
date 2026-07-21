@@ -71,6 +71,14 @@ object BLEProtocol {
         )
     }
 
+    fun answerCall(id: Long): BLEMessage {
+        return BLEMessage(
+            id = id,
+            type = MessageType.request,
+            action = "answer_call"
+        )
+    }
+
     fun callStatusEvent(status: CallStatus, phone: String? = null): BLEMessage {
         return BLEMessage(
             type = MessageType.event,

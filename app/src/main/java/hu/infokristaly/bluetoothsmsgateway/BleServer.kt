@@ -398,9 +398,16 @@ class BleServer(
             }
 
             "hang_up" -> {
-                Log.d("BLE", "Ending call")
+                Log.d("BLE", "Ending or rejecting call")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     telecomManager.endCall()
+                }
+            }
+
+            "answer_call" -> {
+                Log.d("BLE", "Answering call")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    telecomManager.acceptRingingCall()
                 }
             }
         }

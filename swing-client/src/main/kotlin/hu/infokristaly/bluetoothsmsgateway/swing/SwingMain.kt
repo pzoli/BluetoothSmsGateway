@@ -20,6 +20,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     private val msgArea = JTextArea(3, 20)
     private val sendBtn = JButton("Send SMS")
     private val callBtn = JButton("Call")
+    private val rejectBtn = JButton("Reject")
     private val fetchContactsBtn = JButton("Fetch Contacts")
     private val statusLabel = JLabel("Status: Disconnected")
     private val connectionSwitch = JToggleButton("Connect")
@@ -117,13 +118,23 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         controlPanel.add(JLabel("Recipient Phone Number:"), gbc)
         
         gbc.gridy = 1
-        val phonePanel = JPanel(BorderLayout(5, 0))
+        val phonePanel = JPanel(FlowLayout(FlowLayout.LEFT, 5, 0))
+        phoneField.preferredSize = Dimension(200, 30)
         phoneField.putClientProperty("JTextField.placeholderText", "+36301234567")
-        phonePanel.add(phoneField, BorderLayout.CENTER)
+        phonePanel.add(phoneField)
         
         callBtn.isEnabled = false
         callBtn.addActionListener { handleCallAction() }
-        phonePanel.add(callBtn, BorderLayout.EAST)
+        phonePanel.add(callBtn)
+
+        rejectBtn.isVisible = false
+        rejectBtn.background = Color(0xE74C3C)
+        rejectBtn.foreground = Color.WHITE
+        rejectBtn.addActionListener { 
+            client.sendCommand(BLEProtocol.hangUp(System.currentTimeMillis()))
+        }
+        phonePanel.add(rejectBtn)
+
         controlPanel.add(phonePanel, gbc)
 
         // Message Input
@@ -155,15 +166,21 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     }
 
     private fun handleCallAction() {
-        if (currentCallStatus == CallStatus.IDLE) {
-            val phone = phoneField.text
-            if (phone.isBlank()) {
-                JOptionPane.showMessageDialog(this, "Please enter phone number")
-                return
+        when (currentCallStatus) {
+            CallStatus.IDLE -> {
+                val phone = phoneField.text
+                if (phone.isBlank()) {
+                    JOptionPane.showMessageDialog(this, "Please enter phone number")
+                    return
+                }
+                client.sendCommand(BLEProtocol.makeCall(System.currentTimeMillis(), phone))
             }
-            client.sendCommand(BLEProtocol.makeCall(System.currentTimeMillis(), phone))
-        } else {
-            client.sendCommand(BLEProtocol.hangUp(System.currentTimeMillis()))
+            CallStatus.RINGING -> {
+                client.sendCommand(BLEProtocol.answerCall(System.currentTimeMillis()))
+            }
+            CallStatus.OFFHOOK -> {
+                client.sendCommand(BLEProtocol.hangUp(System.currentTimeMillis()))
+            }
         }
     }
 
@@ -255,13 +272,24 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
                 callBtn.text = "Call"
                 callBtn.background = Color(0x3498DB)
                 callBtn.foreground = Color.WHITE
+                rejectBtn.isVisible = false
             }
-            CallStatus.RINGING, CallStatus.OFFHOOK -> {
+            CallStatus.RINGING -> {
+                callBtn.text = "Answer"
+                callBtn.background = Color(0x2ECC71)
+                callBtn.foreground = Color.WHITE
+                rejectBtn.isVisible = true
+                rejectBtn.text = "Reject"
+            }
+            CallStatus.OFFHOOK -> {
                 callBtn.text = "Hang up"
                 callBtn.background = Color(0xE74C3C)
                 callBtn.foreground = Color.WHITE
+                rejectBtn.isVisible = false
             }
         }
+        revalidate()
+        repaint()
     }
 
     private fun updateContactsTree(contacts: List<Contact>) {
