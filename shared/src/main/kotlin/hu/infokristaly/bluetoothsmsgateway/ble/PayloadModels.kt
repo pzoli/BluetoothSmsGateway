@@ -31,3 +31,16 @@ data class Contact(
 data class ContactListPayload(
     val contacts: List<Contact>
 )
+
+@Serializable
+enum class CallStatus {
+    IDLE,
+    RINGING,
+    OFFHOOK
+}
+
+@Serializable
+data class CallStatusPayload(
+    val status: CallStatus,
+    val phoneNumber: String? = null
+)

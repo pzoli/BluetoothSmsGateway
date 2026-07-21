@@ -14,6 +14,18 @@ tasks.shadowJar {
     mergeServiceFiles()
 }
 
+tasks.distZip {
+    dependsOn(tasks.shadowJar)
+}
+
+tasks.distTar {
+    dependsOn(tasks.shadowJar)
+}
+
+tasks.startScripts {
+    dependsOn(tasks.shadowJar)
+}
+
 // Disabling standard jar task to avoid conflicts with shadow
 tasks.jar {
     enabled = false

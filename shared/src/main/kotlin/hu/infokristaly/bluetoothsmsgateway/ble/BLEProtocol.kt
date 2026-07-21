@@ -52,6 +52,35 @@ object BLEProtocol {
         )
     }
 
+    fun makeCall(id: Long, phone: String): BLEMessage {
+        return BLEMessage(
+            id = id,
+            type = MessageType.request,
+            action = "make_call",
+            payload = BLECodec.json.encodeToJsonElement(
+                SendSmsPayload(phone, "")
+            )
+        )
+    }
+
+    fun hangUp(id: Long): BLEMessage {
+        return BLEMessage(
+            id = id,
+            type = MessageType.request,
+            action = "hang_up"
+        )
+    }
+
+    fun callStatusEvent(status: CallStatus, phone: String? = null): BLEMessage {
+        return BLEMessage(
+            type = MessageType.event,
+            action = "call_status",
+            payload = BLECodec.json.encodeToJsonElement(
+                CallStatusPayload(status, phone)
+            )
+        )
+    }
+
     fun ok(id: Long) = BLEMessage(
         id = id,
         type = MessageType.response,

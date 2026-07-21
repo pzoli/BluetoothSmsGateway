@@ -19,12 +19,15 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     private val phoneField = JTextField()
     private val msgArea = JTextArea(3, 20)
     private val sendBtn = JButton("Send SMS")
+    private val callBtn = JButton("Call")
     private val fetchContactsBtn = JButton("Fetch Contacts")
     private val statusLabel = JLabel("Status: Disconnected")
     private val connectionSwitch = JToggleButton("Connect")
     
     private val contactsRoot = DefaultMutableTreeNode("Contacts")
     private val contactsTree = JTree(contactsRoot)
+
+    private var currentCallStatus: CallStatus = CallStatus.IDLE
 
     init {
         setupUI()
@@ -91,7 +94,6 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
             if (node != null && node.isLeaf) {
                 val rawNumber = node.userObject.toString()
                 if (rawNumber.startsWith("+") || rawNumber.any { it.isDigit() }) {
-                    // Sanitize: remove spaces, hyphens, parentheses and slashes
                     val sanitized = rawNumber.replace(Regex("[\\s\\-()/]"), "")
                     phoneField.text = sanitized
                 }
@@ -115,8 +117,14 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         controlPanel.add(JLabel("Recipient Phone Number:"), gbc)
         
         gbc.gridy = 1
+        val phonePanel = JPanel(BorderLayout(5, 0))
         phoneField.putClientProperty("JTextField.placeholderText", "+36301234567")
-        controlPanel.add(phoneField, gbc)
+        phonePanel.add(phoneField, BorderLayout.CENTER)
+        
+        callBtn.isEnabled = false
+        callBtn.addActionListener { handleCallAction() }
+        phonePanel.add(callBtn, BorderLayout.EAST)
+        controlPanel.add(phonePanel, gbc)
 
         // Message Input
         gbc.gridy = 2
@@ -146,6 +154,19 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         add(mainPanel)
     }
 
+    private fun handleCallAction() {
+        if (currentCallStatus == CallStatus.IDLE) {
+            val phone = phoneField.text
+            if (phone.isBlank()) {
+                JOptionPane.showMessageDialog(this, "Please enter phone number")
+                return
+            }
+            client.sendCommand(BLEProtocol.makeCall(System.currentTimeMillis(), phone))
+        } else {
+            client.sendCommand(BLEProtocol.hangUp(System.currentTimeMillis()))
+        }
+    }
+
     private fun startBle() {
         client.start(
             onStatusChange = { status ->
@@ -155,17 +176,20 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
                         "Connected" -> {
                             statusLabel.foreground = Color(0x2ECC71)
                             sendBtn.isEnabled = true
+                            callBtn.isEnabled = true
                             fetchContactsBtn.isEnabled = true
                             connectionSwitch.isSelected = true
                         }
                         "Scanning", "Connecting" -> {
                             statusLabel.foreground = Color(0xF1C40F)
                             sendBtn.isEnabled = false
+                            callBtn.isEnabled = false
                             fetchContactsBtn.isEnabled = false
                         }
                         else -> {
                             statusLabel.foreground = Color(0xE74C3C)
                             sendBtn.isEnabled = false
+                            callBtn.isEnabled = false
                             fetchContactsBtn.isEnabled = false
                             connectionSwitch.isSelected = false
                         }
@@ -188,6 +212,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     private fun stopBle() {
         client.stop()
         sendBtn.isEnabled = false
+        callBtn.isEnabled = false
         fetchContactsBtn.isEnabled = false
         statusLabel.text = "Status: Disconnected"
         statusLabel.foreground = Color(0xAAAAAA)
@@ -195,6 +220,12 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     }
 
     private fun handleBleEvent(message: BLEMessage) {
+        if (message.action == "call_status") {
+            val payload = BLECodec.json.decodeFromJsonElement(CallStatusPayload.serializer(), message.payload!!)
+            updateCallUI(payload.status)
+            return
+        }
+
         if (message.action == "contacts_list") {
             val payload = BLECodec.json.decodeFromJsonElement(ContactListPayload.serializer(), message.payload!!)
             updateContactsTree(payload.contacts)
@@ -202,8 +233,8 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
             return
         }
 
-        if (message.type == hu.infokristaly.bluetoothsmsgateway.ble.MessageType.response) {
-            val color = if (message.status == hu.infokristaly.bluetoothsmsgateway.ble.Status.ok) Color(0x3498DB) else Color(0xE74C3C)
+        if (message.type == MessageType.response) {
+            val color = if (message.status == Status.ok) Color(0x3498DB) else Color(0xE74C3C)
             appendLog("RESPONSE", "${message.status} (ID: ${message.id})", color)
             return
         }
@@ -213,6 +244,23 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
             appendLog("SMS", "From ${payload.from}: ${payload.text}", Color(0x2ECC71))
         } else {
             appendLog("EVENT", "${message.action}", Color.ORANGE)
+        }
+    }
+
+    private fun updateCallUI(status: CallStatus) {
+        currentCallStatus = status
+        appendLog("System", "Phone status: $status", Color.LIGHT_GRAY)
+        when (status) {
+            CallStatus.IDLE -> {
+                callBtn.text = "Call"
+                callBtn.background = Color(0x3498DB)
+                callBtn.foreground = Color.WHITE
+            }
+            CallStatus.RINGING, CallStatus.OFFHOOK -> {
+                callBtn.text = "Hang up"
+                callBtn.background = Color(0xE74C3C)
+                callBtn.foreground = Color.WHITE
+            }
         }
     }
 
@@ -242,7 +290,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
             return
         }
 
-        val request = hu.infokristaly.bluetoothsmsgateway.ble.BLEProtocol.sendSms(
+        val request = BLEProtocol.sendSms(
             System.currentTimeMillis(),
             phone,
             text

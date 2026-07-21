@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.content.Context
+import android.content.Intent
 import androidx.annotation.RequiresPermission
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
@@ -17,6 +18,10 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.toJavaUuid
 import java.util.UUID
 import android.provider.ContactsContract
+import android.telephony.TelephonyManager
+import android.telephony.TelephonyCallback
+import android.telecom.TelecomManager
+import android.net.Uri
 
 @OptIn(ExperimentalUuidApi::class)
 class BleServer(
@@ -54,6 +59,36 @@ class BleServer(
 
     private var connectedDevice: BluetoothDevice? = null
 
+    private val telephonyManager = context.getSystemService(TelephonyManager::class.java)
+    private val telecomManager = context.getSystemService(TelecomManager::class.java)
+
+    @SuppressLint("MissingPermission")
+    private val telephonyCallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        object : TelephonyCallback(), TelephonyCallback.CallStateListener {
+            override fun onCallStateChanged(state: Int) {
+                handleCallStateChanged(state)
+            }
+        }
+    } else {
+        null
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun handleCallStateChanged(state: Int) {
+        val status = when (state) {
+            TelephonyManager.CALL_STATE_IDLE -> CallStatus.IDLE
+            TelephonyManager.CALL_STATE_RINGING -> CallStatus.RINGING
+            TelephonyManager.CALL_STATE_OFFHOOK -> CallStatus.OFFHOOK
+            else -> CallStatus.IDLE
+        }
+        Log.d("BLE", "Call state changed: $status")
+        try {
+            sendEvent(BLEProtocol.callStatusEvent(status))
+        } catch (e: Exception) {
+            Log.e("BLE", "Error sending call status: ${e.message}")
+        }
+    }
+
     @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE])
     fun start(){
         if (::server.isInitialized) {
@@ -63,6 +98,11 @@ class BleServer(
             } catch (e: Exception) {
                 Log.e("BLE", "Error closing existing server: ${e.message}")
             }
+        }
+
+        // Register telephony callback
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && telephonyCallback != null) {
+            telephonyManager.registerTelephonyCallback(context.mainExecutor, telephonyCallback)
         }
 
         val gattServer =
@@ -166,6 +206,9 @@ class BleServer(
 
     @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE])
     fun stop() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && telephonyCallback != null) {
+            telephonyManager.unregisterTelephonyCallback(telephonyCallback)
+        }
         if (::server.isInitialized) {
             server.close()
         }
@@ -279,7 +322,7 @@ class BleServer(
 
         }
 
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @SuppressLint("MissingPermission")
     fun sendEvent(message: BLEMessage) {
         Log.d("BLE", "sendEvent called for action: ${message.action}")
 
@@ -321,31 +364,16 @@ class BleServer(
         }
     }
 
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @SuppressLint("MissingPermission")
     private fun processCommand(
         message: BLEMessage
     ){
         when(message.action){
 
-            "send_sms"->{
-
-                val payload =
-                    BLECodec.json.decodeFromJsonElement<SendSmsPayload>(
-                        message.payload!!
-                    )
-                
+            "send_sms" -> {
+                val payload = BLECodec.json.decodeFromJsonElement<SendSmsPayload>(message.payload!!)
                 Log.d("BLE", "Sending SMS to ${payload.phone}")
-
-                SmsManagerService.send(
-
-                    context,
-
-                    payload.phone,
-
-                    payload.text
-                )
-                
-                // Send confirmation back to client
+                SmsManagerService.send(context, payload.phone, payload.text)
                 if (message.id != null) {
                     sendEvent(BLEProtocol.ok(message.id!!))
                 }
@@ -356,6 +384,23 @@ class BleServer(
                 val contacts = fetchContacts()
                 if (message.id != null) {
                     sendEvent(BLEProtocol.contactsResponse(message.id!!, contacts))
+                }
+            }
+
+            "make_call" -> {
+                val payload = BLECodec.json.decodeFromJsonElement<SendSmsPayload>(message.payload!!)
+                Log.d("BLE", "Making call to ${payload.phone}")
+                val intent = Intent(Intent.ACTION_CALL).apply {
+                    data = Uri.parse("tel:${payload.phone}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            }
+
+            "hang_up" -> {
+                Log.d("BLE", "Ending call")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    telecomManager.endCall()
                 }
             }
         }
