@@ -2,10 +2,15 @@ plugins {
     kotlin("jvm")
     kotlin("plugin.serialization") version "2.2.10"
     application
+    alias(libs.plugins.shadow)
 }
 
 application {
     mainClass.set("hu.infokristaly.bluetoothsmsgateway.client.MainKt")
+}
+
+tasks.shadowJar {
+    archiveFileName.set("javase-client.jar")
 }
 
 tasks.withType<JavaExec> {

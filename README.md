@@ -26,9 +26,24 @@ sudo apt install libdbus-1-dev
 ./gradlew :javase-client:run --args="--ble"
 ```
 
+or with java jar
+
+```bash
+./gradlew :javase-client:shadowJar
+java -jar javase-client/build/libs/javase-client.jar --ble
+```
+
 ## Run Swing client
 ```bash
 ./gradlew :swing-client:run
 ```
+
+or with java jar
+
+```bash
+./gradlew :swing-client:shadowJar
+java -jar swing-client/build/libs/swing-client.jar
+```
+
 
 ![BluetoothSMSGWSwingClient.png](docs/BluetoothSMSGWSwingClient.png)

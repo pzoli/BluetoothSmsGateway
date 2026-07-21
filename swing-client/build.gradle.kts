@@ -1,10 +1,15 @@
 plugins {
     kotlin("jvm")
     application
+    alias(libs.plugins.shadow)
 }
 
 application {
     mainClass.set("hu.infokristaly.bluetoothsmsgateway.swing.SwingMainKt")
+}
+
+tasks.shadowJar {
+    archiveFileName.set("swing-client.jar")
 }
 
 kotlin {
