@@ -19,11 +19,11 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     private val phoneField = JTextField()
     private val msgArea = JTextArea(3, 20)
     private val sendBtn = JButton("Send SMS")
-    private val statusLabel = JLabel("Disconnected")
+    private val statusLabel = JLabel("Status: Disconnected")
+    private val connectionSwitch = JToggleButton("Connect")
 
     init {
         setupUI()
-        startBle()
     }
 
     private fun setupUI() {
@@ -55,6 +55,17 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         titleLabel.font = titleLabel.font.deriveFont(Font.BOLD, 18f)
         headerPanel.add(titleLabel, BorderLayout.CENTER)
         titleLabel.horizontalAlignment = SwingConstants.CENTER
+
+        // Switch Toggle
+        connectionSwitch.putClientProperty("JButton.buttonType", "switch")
+        connectionSwitch.addActionListener {
+            if (connectionSwitch.isSelected) {
+                startBle()
+            } else {
+                stopBle()
+            }
+        }
+        headerPanel.add(connectionSwitch, BorderLayout.EAST)
         
         mainPanel.add(headerPanel, BorderLayout.NORTH)
 
@@ -99,6 +110,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         sendBtn.background = Color(0x3498DB)
         sendBtn.foreground = Color.WHITE
         sendBtn.font = sendBtn.font.deriveFont(Font.BOLD)
+        sendBtn.isEnabled = false // Disabled until connected
         sendBtn.addActionListener {
             sendSms()
         }
@@ -114,9 +126,20 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
                 SwingUtilities.invokeLater {
                     statusLabel.text = "Status: $status"
                     when (status) {
-                        "Connected" -> statusLabel.foreground = Color(0x2ECC71)
-                        "Scanning", "Connecting" -> statusLabel.foreground = Color(0xF1C40F)
-                        else -> statusLabel.foreground = Color(0xE74C3C)
+                        "Connected" -> {
+                            statusLabel.foreground = Color(0x2ECC71)
+                            sendBtn.isEnabled = true
+                            connectionSwitch.isSelected = true
+                        }
+                        "Scanning", "Connecting" -> {
+                            statusLabel.foreground = Color(0xF1C40F)
+                            sendBtn.isEnabled = false
+                        }
+                        else -> {
+                            statusLabel.foreground = Color(0xE74C3C)
+                            sendBtn.isEnabled = false
+                            connectionSwitch.isSelected = false
+                        }
                     }
                 }
             },
@@ -131,6 +154,14 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
                 }
             }
         )
+    }
+
+    private fun stopBle() {
+        client.stop()
+        sendBtn.isEnabled = false
+        statusLabel.text = "Status: Disconnected"
+        statusLabel.foreground = Color(0xAAAAAA)
+        appendLog("System", "Manual disconnection triggered", Color.LIGHT_GRAY)
     }
 
     private fun handleBleEvent(message: BLEMessage) {
