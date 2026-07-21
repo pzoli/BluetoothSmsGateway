@@ -19,6 +19,7 @@
         tools:ignore="SmsAndCallLogPolicy" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE"
         tools:ignore="SmsAndCallLogPolicy" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />

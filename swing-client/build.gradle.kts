@@ -8,8 +8,15 @@ application {
     mainClass.set("hu.infokristaly.bluetoothsmsgateway.swing.SwingMainKt")
 }
 
+// Fixed for shadow plugin compatibility with modern Gradle
 tasks.shadowJar {
     archiveFileName.set("swing-client.jar")
+    mergeServiceFiles()
+}
+
+// Disabling standard jar task to avoid conflicts with shadow
+tasks.jar {
+    enabled = false
 }
 
 kotlin {

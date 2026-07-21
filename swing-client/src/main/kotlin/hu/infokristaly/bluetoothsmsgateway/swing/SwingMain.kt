@@ -1,9 +1,7 @@
 package hu.infokristaly.bluetoothsmsgateway.swing
 
 import com.formdev.flatlaf.themes.FlatMacDarkLaf
-import hu.infokristaly.bluetoothsmsgateway.ble.BLECodec
-import hu.infokristaly.bluetoothsmsgateway.ble.BLEMessage
-import hu.infokristaly.bluetoothsmsgateway.ble.SmsReceivedPayload
+import hu.infokristaly.bluetoothsmsgateway.ble.*
 import hu.infokristaly.bluetoothsmsgateway.client.KableBleClient
 import kotlinx.coroutines.*
 import java.awt.*
@@ -11,6 +9,8 @@ import javax.swing.*
 import javax.swing.border.EmptyBorder
 import javax.swing.text.SimpleAttributeSet
 import javax.swing.text.StyleConstants
+import javax.swing.tree.DefaultMutableTreeNode
+import javax.swing.tree.DefaultTreeModel
 
 class SwingClient : JFrame("Bluetooth SMS Gateway") {
 
@@ -19,8 +19,12 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     private val phoneField = JTextField()
     private val msgArea = JTextArea(3, 20)
     private val sendBtn = JButton("Send SMS")
+    private val fetchContactsBtn = JButton("Fetch Contacts")
     private val statusLabel = JLabel("Status: Disconnected")
     private val connectionSwitch = JToggleButton("Connect")
+    
+    private val contactsRoot = DefaultMutableTreeNode("Contacts")
+    private val contactsTree = JTree(contactsRoot)
 
     init {
         setupUI()
@@ -39,7 +43,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
             }
         })
         
-        size = Dimension(600, 700)
+        size = Dimension(900, 700)
         setLocationRelativeTo(null)
 
         val mainPanel = JPanel(BorderLayout(15, 15))
@@ -56,25 +60,47 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         headerPanel.add(titleLabel, BorderLayout.CENTER)
         titleLabel.horizontalAlignment = SwingConstants.CENTER
 
-        // Switch Toggle
+        // Top Buttons
+        val topBtnPanel = JPanel(FlowLayout(FlowLayout.RIGHT))
+        
+        fetchContactsBtn.isEnabled = false
+        fetchContactsBtn.addActionListener { fetchContacts() }
+        topBtnPanel.add(fetchContactsBtn)
+
         connectionSwitch.putClientProperty("JButton.buttonType", "switch")
         connectionSwitch.addActionListener {
-            if (connectionSwitch.isSelected) {
-                startBle()
-            } else {
-                stopBle()
-            }
+            if (connectionSwitch.isSelected) startBle() else stopBle()
         }
-        headerPanel.add(connectionSwitch, BorderLayout.EAST)
+        topBtnPanel.add(connectionSwitch)
         
+        headerPanel.add(topBtnPanel, BorderLayout.EAST)
         mainPanel.add(headerPanel, BorderLayout.NORTH)
 
-        // Log Area
+        // Center Split Content
+        val logScroll = JScrollPane(logPane)
         logPane.isEditable = false
         logPane.font = Font("Monospaced", Font.PLAIN, 12)
-        val scrollPane = JScrollPane(logPane)
-        scrollPane.border = BorderFactory.createTitledBorder("Activity Log")
-        mainPanel.add(scrollPane, BorderLayout.CENTER)
+        logScroll.border = BorderFactory.createTitledBorder("Activity Log")
+
+        val treeScroll = JScrollPane(contactsTree)
+        treeScroll.border = BorderFactory.createTitledBorder("Contacts")
+        treeScroll.preferredSize = Dimension(250, 0)
+        
+        contactsTree.addTreeSelectionListener {
+            val node = contactsTree.lastSelectedPathComponent as? DefaultMutableTreeNode
+            if (node != null && node.isLeaf) {
+                val rawNumber = node.userObject.toString()
+                if (rawNumber.startsWith("+") || rawNumber.any { it.isDigit() }) {
+                    // Sanitize: remove spaces, hyphens, parentheses and slashes
+                    val sanitized = rawNumber.replace(Regex("[\\s\\-()/]"), "")
+                    phoneField.text = sanitized
+                }
+            }
+        }
+
+        val splitPane = JSplitPane(JSplitPane.HORIZONTAL_SPLIT, treeScroll, logScroll)
+        splitPane.dividerLocation = 250
+        mainPanel.add(splitPane, BorderLayout.CENTER)
 
         // Control Panel
         val controlPanel = JPanel()
@@ -110,7 +136,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         sendBtn.background = Color(0x3498DB)
         sendBtn.foreground = Color.WHITE
         sendBtn.font = sendBtn.font.deriveFont(Font.BOLD)
-        sendBtn.isEnabled = false // Disabled until connected
+        sendBtn.isEnabled = false
         sendBtn.addActionListener {
             sendSms()
         }
@@ -129,15 +155,18 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
                         "Connected" -> {
                             statusLabel.foreground = Color(0x2ECC71)
                             sendBtn.isEnabled = true
+                            fetchContactsBtn.isEnabled = true
                             connectionSwitch.isSelected = true
                         }
                         "Scanning", "Connecting" -> {
                             statusLabel.foreground = Color(0xF1C40F)
                             sendBtn.isEnabled = false
+                            fetchContactsBtn.isEnabled = false
                         }
                         else -> {
                             statusLabel.foreground = Color(0xE74C3C)
                             sendBtn.isEnabled = false
+                            fetchContactsBtn.isEnabled = false
                             connectionSwitch.isSelected = false
                         }
                     }
@@ -159,12 +188,20 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     private fun stopBle() {
         client.stop()
         sendBtn.isEnabled = false
+        fetchContactsBtn.isEnabled = false
         statusLabel.text = "Status: Disconnected"
         statusLabel.foreground = Color(0xAAAAAA)
         appendLog("System", "Manual disconnection triggered", Color.LIGHT_GRAY)
     }
 
     private fun handleBleEvent(message: BLEMessage) {
+        if (message.action == "contacts_list") {
+            val payload = BLECodec.json.decodeFromJsonElement(ContactListPayload.serializer(), message.payload!!)
+            updateContactsTree(payload.contacts)
+            appendLog("INFO", "Received ${payload.contacts.size} contacts", Color.CYAN)
+            return
+        }
+
         if (message.type == hu.infokristaly.bluetoothsmsgateway.ble.MessageType.response) {
             val color = if (message.status == hu.infokristaly.bluetoothsmsgateway.ble.Status.ok) Color(0x3498DB) else Color(0xE74C3C)
             appendLog("RESPONSE", "${message.status} (ID: ${message.id})", color)
@@ -177,6 +214,24 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         } else {
             appendLog("EVENT", "${message.action}", Color.ORANGE)
         }
+    }
+
+    private fun updateContactsTree(contacts: List<Contact>) {
+        contactsRoot.removeAllChildren()
+        contacts.forEach { contact ->
+            val nameNode = DefaultMutableTreeNode(contact.name)
+            contact.numbers.forEach { number ->
+                nameNode.add(DefaultMutableTreeNode(number))
+            }
+            contactsRoot.add(nameNode)
+        }
+        (contactsTree.model as DefaultTreeModel).reload()
+    }
+
+    private fun fetchContacts() {
+        val request = BLEProtocol.getContacts(System.currentTimeMillis())
+        client.sendCommand(request)
+        appendLog("ACTION", "Fetching contacts list...", Color.WHITE)
     }
 
     private fun sendSms() {
@@ -201,12 +256,10 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         val doc = logPane.styledDocument
         val attr = SimpleAttributeSet()
         
-        // Tag
         StyleConstants.setBold(attr, true)
         StyleConstants.setForeground(attr, color)
         doc.insertString(doc.length, "[$tag] ", attr)
         
-        // Text
         StyleConstants.setBold(attr, false)
         StyleConstants.setForeground(attr, Color.WHITE)
         doc.insertString(doc.length, "$text\n", attr)

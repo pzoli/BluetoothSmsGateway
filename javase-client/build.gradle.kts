@@ -11,6 +11,12 @@ application {
 
 tasks.shadowJar {
     archiveFileName.set("javase-client.jar")
+    mergeServiceFiles()
+}
+
+// Disabling standard jar task to avoid conflicts with shadow
+tasks.jar {
+    enabled = false
 }
 
 tasks.withType<JavaExec> {

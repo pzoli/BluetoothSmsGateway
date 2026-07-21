@@ -11,14 +11,12 @@ import android.bluetooth.le.AdvertiseSettings
 import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
-import hu.infokristaly.bluetoothsmsgateway.ble.BLECodec
-import hu.infokristaly.bluetoothsmsgateway.ble.BLEFramer
-import hu.infokristaly.bluetoothsmsgateway.ble.BLEMessage
-import hu.infokristaly.bluetoothsmsgateway.ble.SendSmsPayload
+import hu.infokristaly.bluetoothsmsgateway.ble.*
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.toJavaUuid
 import java.util.UUID
+import android.provider.ContactsContract
 
 @OptIn(ExperimentalUuidApi::class)
 class BleServer(
@@ -349,10 +347,53 @@ class BleServer(
                 
                 // Send confirmation back to client
                 if (message.id != null) {
-                    sendEvent(hu.infokristaly.bluetoothsmsgateway.ble.BLEProtocol.ok(message.id!!))
+                    sendEvent(BLEProtocol.ok(message.id!!))
+                }
+            }
+
+            "get_contacts" -> {
+                Log.d("BLE", "Processing get_contacts request")
+                val contacts = fetchContacts()
+                if (message.id != null) {
+                    sendEvent(BLEProtocol.contactsResponse(message.id!!, contacts))
                 }
             }
         }
+    }
+
+    @SuppressLint("Range")
+    private fun fetchContacts(): List<Contact> {
+        val contactsMap = mutableMapOf<Long, Contact>()
+        val resolver = context.contentResolver
+        
+        val cursor = resolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(
+                ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER
+            ),
+            null,
+            null,
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
+        )
+
+        cursor?.use {
+            while (it.moveToNext()) {
+                val id = it.getLong(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID))
+                val name = it.getString(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME))
+                val number = it.getString(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER))
+
+                val existing = contactsMap[id]
+                if (existing != null) {
+                    contactsMap[id] = existing.copy(numbers = existing.numbers + number)
+                } else {
+                    contactsMap[id] = Contact(name, listOf(number))
+                }
+            }
+        }
+        
+        return contactsMap.values.toList()
     }
 
 }

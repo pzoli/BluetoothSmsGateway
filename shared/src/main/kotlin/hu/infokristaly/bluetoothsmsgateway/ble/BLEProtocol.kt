@@ -32,6 +32,26 @@ object BLEProtocol {
         )
     }
 
+    fun getContacts(id: Long): BLEMessage {
+        return BLEMessage(
+            id = id,
+            type = MessageType.request,
+            action = "get_contacts"
+        )
+    }
+
+    fun contactsResponse(id: Long, contacts: List<Contact>): BLEMessage {
+        return BLEMessage(
+            id = id,
+            type = MessageType.response,
+            status = Status.ok,
+            action = "contacts_list",
+            payload = BLECodec.json.encodeToJsonElement(
+                ContactListPayload(contacts)
+            )
+        )
+    }
+
     fun ok(id: Long) = BLEMessage(
         id = id,
         type = MessageType.response,

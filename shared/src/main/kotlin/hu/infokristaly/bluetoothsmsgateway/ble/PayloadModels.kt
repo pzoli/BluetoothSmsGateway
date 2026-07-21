@@ -20,3 +20,14 @@ data class StatusPayload(
     val network: String,
     val signal: Int
 )
+
+@Serializable
+data class Contact(
+    val name: String,
+    val numbers: List<String>
+)
+
+@Serializable
+data class ContactListPayload(
+    val contacts: List<Contact>
+)
