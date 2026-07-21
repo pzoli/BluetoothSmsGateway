@@ -1,7 +1,10 @@
 # BluetoothSmsGateway
 This is an Android Studio bluetooth gateway project for Android phones.
 It is advertise BLE service. You can send SMS message from [MacSMSGateway](https://github.com/pzoli/MacSMSGateway)/Java CLI/Swing client and it can forward incoming SMS to this clients.
+
 The Android service runs in background, so you can close the GUI or lock your screen.
+
+The JavaSE terminal client can send/receive SMSs. The JavaSE Swing client can send/receive SMSs also, plus it can download contacts from your phone and can start call, accept/reject calls.
 
 Source is generated with OpenAI ChatGPT 5.5 and Google Gemini 3 flash pre.
 
