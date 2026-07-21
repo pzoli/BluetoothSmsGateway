@@ -29,3 +29,5 @@ sudo apt install libdbus-1-dev
 ```bash
 ./gradlew :swing-client:run
 ```
+
+![BluetoothSMSGWSwingClient.png](docs/BluetoothSMSGWSwingClient.png)
