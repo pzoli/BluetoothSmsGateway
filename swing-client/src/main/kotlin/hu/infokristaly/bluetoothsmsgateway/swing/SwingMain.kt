@@ -1,19 +1,21 @@
 package hu.infokristaly.bluetoothsmsgateway.swing
 
+import com.formdev.flatlaf.themes.FlatMacDarkLaf
 import hu.infokristaly.bluetoothsmsgateway.ble.BLECodec
 import hu.infokristaly.bluetoothsmsgateway.ble.BLEMessage
 import hu.infokristaly.bluetoothsmsgateway.ble.SmsReceivedPayload
 import hu.infokristaly.bluetoothsmsgateway.client.KableBleClient
 import kotlinx.coroutines.*
-import java.awt.BorderLayout
-import java.awt.Dimension
+import java.awt.*
 import javax.swing.*
 import javax.swing.border.EmptyBorder
+import javax.swing.text.SimpleAttributeSet
+import javax.swing.text.StyleConstants
 
 class SwingClient : JFrame("Bluetooth SMS Gateway") {
 
     private val client = KableBleClient()
-    private val logArea = JTextArea()
+    private val logPane = JTextPane()
     private val phoneField = JTextField()
     private val msgArea = JTextArea(3, 20)
     private val sendBtn = JButton("Send SMS")
@@ -37,43 +39,72 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
             }
         })
         
-        size = Dimension(500, 600)
+        size = Dimension(600, 700)
         setLocationRelativeTo(null)
 
-        val mainPanel = JPanel(BorderLayout(10, 10))
-        mainPanel.border = EmptyBorder(10, 10, 10, 10)
+        val mainPanel = JPanel(BorderLayout(15, 15))
+        mainPanel.border = EmptyBorder(20, 20, 20, 20)
 
-        // Status
-        val topPanel = JPanel(BorderLayout())
-        topPanel.add(statusLabel, BorderLayout.WEST)
-        mainPanel.add(topPanel, BorderLayout.NORTH)
+        // Status Header
+        val headerPanel = JPanel(BorderLayout())
+        statusLabel.font = statusLabel.font.deriveFont(Font.BOLD, 14f)
+        statusLabel.foreground = Color(0xAAAAAA)
+        headerPanel.add(statusLabel, BorderLayout.WEST)
+        
+        val titleLabel = JLabel("SMSGW Client")
+        titleLabel.font = titleLabel.font.deriveFont(Font.BOLD, 18f)
+        headerPanel.add(titleLabel, BorderLayout.CENTER)
+        titleLabel.horizontalAlignment = SwingConstants.CENTER
+        
+        mainPanel.add(headerPanel, BorderLayout.NORTH)
 
-        // Log
-        logArea.isEditable = false
-        val scrollPane = JScrollPane(logArea)
-        scrollPane.border = BorderFactory.createTitledBorder("Event Log")
+        // Log Area
+        logPane.isEditable = false
+        logPane.font = Font("Monospaced", Font.PLAIN, 12)
+        val scrollPane = JScrollPane(logPane)
+        scrollPane.border = BorderFactory.createTitledBorder("Activity Log")
         mainPanel.add(scrollPane, BorderLayout.CENTER)
 
-        // Control
-        val bottomPanel = JPanel()
-        bottomPanel.layout = BoxLayout(bottomPanel, BoxLayout.Y_AXIS)
+        // Control Panel
+        val controlPanel = JPanel()
+        controlPanel.layout = GridBagLayout()
+        val gbc = GridBagConstraints()
+        gbc.fill = GridBagConstraints.HORIZONTAL
+        gbc.insets = Insets(5, 0, 5, 0)
+        gbc.weightx = 1.0
+
+        // Phone Input
+        gbc.gridy = 0
+        controlPanel.add(JLabel("Recipient Phone Number:"), gbc)
         
-        val phonePanel = JPanel(BorderLayout())
-        phonePanel.add(JLabel("Phone: "), BorderLayout.WEST)
-        phonePanel.add(phoneField, BorderLayout.CENTER)
-        bottomPanel.add(phonePanel)
+        gbc.gridy = 1
+        phoneField.putClientProperty("JTextField.placeholderText", "+36301234567")
+        controlPanel.add(phoneField, gbc)
 
-        val msgPanel = JPanel(BorderLayout())
-        msgPanel.add(JLabel("Message: "), BorderLayout.WEST)
-        msgPanel.add(JScrollPane(msgArea), BorderLayout.CENTER)
-        bottomPanel.add(msgPanel)
+        // Message Input
+        gbc.gridy = 2
+        controlPanel.add(JLabel("Message Text:"), gbc)
+        
+        gbc.gridy = 3
+        msgArea.lineWrap = true
+        msgArea.wrapStyleWord = true
+        val msgScroll = JScrollPane(msgArea)
+        msgScroll.preferredSize = Dimension(0, 80)
+        controlPanel.add(msgScroll, gbc)
 
+        // Send Button
+        gbc.gridy = 4
+        gbc.insets = Insets(15, 0, 0, 0)
+        sendBtn.putClientProperty("JButton.buttonType", "roundRect")
+        sendBtn.background = Color(0x3498DB)
+        sendBtn.foreground = Color.WHITE
+        sendBtn.font = sendBtn.font.deriveFont(Font.BOLD)
         sendBtn.addActionListener {
             sendSms()
         }
-        bottomPanel.add(sendBtn)
+        controlPanel.add(sendBtn, gbc)
 
-        mainPanel.add(bottomPanel, BorderLayout.SOUTH)
+        mainPanel.add(controlPanel, BorderLayout.SOUTH)
         add(mainPanel)
     }
 
@@ -81,7 +112,13 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         client.start(
             onStatusChange = { status ->
                 SwingUtilities.invokeLater {
-                    statusLabel.text = status
+                    statusLabel.text = "Status: $status"
+                    when (status) {
+                        "Connected" -> statusLabel.foreground = Color(0x2ECC71)
+                        "Scanning", "Connecting" -> statusLabel.foreground = Color(0xF1C40F)
+                        else -> statusLabel.foreground = Color(0xE74C3C)
+                    }
+                    appendLog("System", "BLE Status changed to: $status", Color.LIGHT_GRAY)
                 }
             },
             onEvent = { message ->
@@ -94,14 +131,16 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
 
     private fun handleBleEvent(message: BLEMessage) {
         if (message.type == hu.infokristaly.bluetoothsmsgateway.ble.MessageType.response) {
-            logArea.append("[RESPONSE] ${message.status} (ID: ${message.id})\n")
+            val color = if (message.status == hu.infokristaly.bluetoothsmsgateway.ble.Status.ok) Color(0x3498DB) else Color(0xE74C3C)
+            appendLog("RESPONSE", "${message.status} (ID: ${message.id})", color)
             return
         }
         
-        logArea.append("[EVENT] ${message.action}\n")
         if (message.action == "sms_received") {
             val payload = BLECodec.json.decodeFromJsonElement(SmsReceivedPayload.serializer(), message.payload!!)
-            logArea.append("SMS from ${payload.from}: ${payload.text}\n")
+            appendLog("SMS", "From ${payload.from}: ${payload.text}", Color(0x2ECC71))
+        } else {
+            appendLog("EVENT", "${message.action}", Color.ORANGE)
         }
     }
 
@@ -119,12 +158,34 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
             text
         )
         client.sendCommand(request)
-        logArea.append("[SENT] SMS to $phone\n")
+        appendLog("SENDING", "To $phone: $text", Color.WHITE)
         msgArea.text = ""
+    }
+
+    private fun appendLog(tag: String, text: String, color: Color) {
+        val doc = logPane.styledDocument
+        val attr = SimpleAttributeSet()
+        
+        // Tag
+        StyleConstants.setBold(attr, true)
+        StyleConstants.setForeground(attr, color)
+        doc.insertString(doc.length, "[$tag] ", attr)
+        
+        // Text
+        StyleConstants.setBold(attr, false)
+        StyleConstants.setForeground(attr, Color.WHITE)
+        doc.insertString(doc.length, "$text\n", attr)
+        
+        logPane.caretPosition = doc.length
     }
 }
 
 fun main() {
+    FlatMacDarkLaf.setup()
+    UIManager.put("Component.focusWidth", 1)
+    UIManager.put("Button.arc", 10)
+    UIManager.put("Component.arc", 10)
+    
     SwingUtilities.invokeLater {
         SwingClient().isVisible = true
     }
