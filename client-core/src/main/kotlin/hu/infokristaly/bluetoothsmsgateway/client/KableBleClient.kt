@@ -17,20 +17,25 @@ class KableBleClient(
     private val deviceName: String = "SMSGW",
 ) {
     private var peripheral: Peripheral? = null
-    private var commandChar: Characteristic? = null
-    private var eventChar: Characteristic? = null
     private val framer = BLEFramer()
     private val isRunning = AtomicBoolean(false)
     private val bleDispatcher = newSingleThreadContext("BLE")
     private val scope = CoroutineScope(bleDispatcher + SupervisorJob())
+    private var onLogCallback: (String) -> Unit = {}
+
+    private fun log(message: String) {
+        println(message)
+        onLogCallback(message)
+    }
 
     fun start(
         onStatusChange: (String) -> Unit = {},
+        onLog: (String) -> Unit = {},
         onEvent: (BLEMessage) -> Unit
     ) {
+        this.onLogCallback = onLog
         scope.launch {
             try {
-                // Cleanup previous connection if any
                 if (peripheral != null) {
                     try {
                         peripheral!!.disconnect()
@@ -38,114 +43,82 @@ class KableBleClient(
                     peripheral = null
                 }
                 
-                val scanner = Scanner {
-                    filters {
-                        match {
-                            services = listOf(BleProtocol.SERVICE_UUID)
+                // No filters for maximum visibility during debugging
+                val scanner = Scanner()
+
+                log("Scanning for everything (Looking for $deviceName)...")
+                onStatusChange("Scanning")
+                
+                val advertisement = withTimeoutOrNull(20.seconds) {
+                    scanner.advertisements
+                        .onEach { 
+                            val name = it.name ?: "Unknown"
+                            // Only log if it's likely our device or to show progress
+                            if (name.contains("SMS") || name == "Unknown") {
+                                log("DEBUG: Found candidate: $name [${it.identifier}]")
+                            }
                         }
-                    }
+                        .firstOrNull { (it.name == deviceName) || (it.name?.contains(deviceName) == true) }
                 }
 
-                println("Scanning for $deviceName...")
-                onStatusChange("Scanning")
-                val advertisement = scanner.advertisements
-                    .firstOrNull { (it.name == deviceName) || (it.name?.contains(deviceName) == true) }
-
                 if (advertisement == null) {
-                    println("Device $deviceName not found.")
+                    log("Device $deviceName not found within 20s. Check if phone is Advertising and Bluetooth is ON.")
                     onStatusChange("Not Found")
                     return@launch
                 }
 
-                println("Found device: ${advertisement.name} [${advertisement.identifier}]")
+                log("Found device: ${advertisement.name} [${advertisement.identifier}]")
                 peripheral = Peripheral(advertisement)
 
-                // Observe connection state
                 scope.launch {
                     peripheral!!.state.collect { state ->
-                        println("Connection state: $state")
+                        log("Connection state: $state")
                         if (state is State.Disconnected) {
                             isRunning.set(false)
                         }
                     }
                 }
 
-                println("Connecting to $deviceName...")
+                log("Connecting to $deviceName...")
                 onStatusChange("Connecting")
                 peripheral!!.connect()
-                println("Connected to $deviceName")
+                log("Connected to $deviceName")
                 onStatusChange("Connected")
                 
-                // Wait for services to be discovered and populated
-                println("Waiting for services to be discovered...")
-                val discoveredServices = peripheral!!.services.filterNotNull().first { it.isNotEmpty() }
-                println("Services discovered.")
+                isRunning.set(true)
 
-                // Eagerly resolve characteristics to ensure D-Bus handles are ready
-                val service = discoveredServices.find { it.serviceUuid == BleProtocol.SERVICE_UUID }
-                    ?: throw IllegalStateException("Service ${BleProtocol.SERVICE_UUID} not found")
-                
-                commandChar = service.characteristics.find { it.characteristicUuid == BleProtocol.COMMAND_UUID }
-                    ?: throw IllegalStateException("Command characteristic not found")
-                
-                eventChar = service.characteristics.find { it.characteristicUuid == BleProtocol.EVENT_UUID }
-                    ?: throw IllegalStateException("Event characteristic not found")
+                val eventChar = characteristicOf(
+                    service = BleProtocol.SERVICE_UUID,
+                    characteristic = BleProtocol.EVENT_UUID
+                )
 
-                println("Characteristics resolved and cached.")
+                log("Subscribing to notifications for ${BleProtocol.EVENT_UUID}...")
                 
-                // Give more time for GATT table to stabilize on Linux
-                println("Settling GATT table (3s delay)...")
-                delay(3.seconds)
-
-                // Observe notifications
-                println("Subscribing to notifications for ${BleProtocol.EVENT_UUID}...")
-                
-                try {
-                    // Start observing in a separate job
-                    scope.launch {
-                        peripheral!!.observe(eventChar!!)
+                scope.launch {
+                    try {
+                        peripheral!!.observe(eventChar)
                             .collect { data ->
+                                log("DEBUG: Received raw packet (${data.size} bytes)")
                                 val messages = framer.append(data)
                                 messages.forEach { msgJson ->
                                     try {
                                         val message = BLECodec.decode(msgJson)
                                         onEvent(message)
                                     } catch (e: Exception) {
-                                        println("Error decoding event: ${e.message}")
-                                        println("Raw JSON: $msgJson")
+                                        log("Error decoding event: ${e.message}")
+                                        log("Raw JSON: $msgJson")
                                     }
                                 }
                             }
-                    }
-
-                    // Wait for the CCCD write (notification enablement) to settle
-                    println("Settling subscription (3s delay)...")
-                    delay(3.seconds)
-                    
-                    // Warm up the session with a read to ensure BlueZ GATT handles are active
-                    println("Warming up session...")
-                    try {
-                        withTimeout(2.seconds) {
-                            peripheral!!.read(commandChar!!)
-                        }
-                        println("Session warmed up and ready.")
                     } catch (e: Exception) {
-                        if (e is TimeoutCancellationException) {
-                            println("Warm-up read TIMED OUT. Linux stack might be unstable.")
-                        } else {
-                            println("Warm-up read failed: ${e.message}")
-                        }
+                        log("Observation stream error: ${e.message}")
                     }
-
-                    isRunning.set(true)
-                    println("Client is now ready for commands.")
-
-                } catch (e: Exception) {
-                    println("Subscription error: ${e.message}")
-                    throw e
                 }
+
+                log("Client is now ready for commands.")
+
             } catch (e: Exception) {
-                println("BLE Client Error: ${e.message}")
+                log("BLE Client Error: ${e.message}")
                 isRunning.set(false)
             }
         }
@@ -153,27 +126,24 @@ class KableBleClient(
 
     fun sendCommand(message: BLEMessage) {
         val p = peripheral ?: run {
-            println("Error sending command: Peripheral is null")
+            log("Error sending command: Peripheral is null")
             return
         }
         
-        val char = commandChar ?: run {
-            println("Error sending command: Command characteristic not resolved")
-            return
-        }
-
         if (!isRunning.get()) {
-            println("Error sending command: Client is not running (State: ${p.state.value})")
+            log("Error sending command: Client is not running")
             return
         }
 
         scope.launch {
             try {
-                // Give BlueZ some extra breathing room before the first packet
-                delay(500.milliseconds)
+                val commandChar = characteristicOf(
+                    service = BleProtocol.SERVICE_UUID,
+                    characteristic = BleProtocol.COMMAND_UUID
+                )
                 
                 val packets = BLECodec.encodeToByteArrayList(message)
-                println("Sending ${packets.size} packets...")
+                log("Sending ${packets.size} packets...")
                 packets.forEachIndexed { index, packet ->
                     var success = false
                     var attempt = 1
@@ -181,29 +151,17 @@ class KableBleClient(
                     
                     while (!success && attempt <= maxAttempts) {
                         try {
-                            // Double check connection state before each packet
-                            val currentState = p.state.value
-                            if (currentState !is State.Connected) {
-                                throw IllegalStateException("Lost connection while sending packets (State: $currentState)")
+                            if (p.state.value !is State.Connected) {
+                                throw IllegalStateException("Lost connection")
                             }
                             
-                            // Use a timeout for each write to detect BlueZ stall
                             withTimeout(5.seconds) {
-                                // Switch back to WithoutResponse + higher pacing for Linux/BlueZ stability
-                                p.write(char, packet, WriteType.WithoutResponse)
+                                p.write(commandChar, packet, WriteType.WithoutResponse)
                             }
                             success = true
                         } catch (e: Exception) {
-                            if (e is TimeoutCancellationException) {
-                                println("Packet ${index + 1} attempt $attempt TIMED OUT")
-                            } else if (e is CancellationException) {
-                                throw e
-                            } else {
-                                println("Packet ${index + 1} attempt $attempt failed: ${e.message}")
-                            }
-                            
-                            if (attempt < maxAttempts && (e.message?.contains("Not connected") == true || e is TimeoutCancellationException)) {
-                                println("Transient error or timeout detected, retrying in 1s...")
+                            log("Packet ${index + 1} attempt $attempt failed: ${e.message}")
+                            if (attempt < maxAttempts) {
                                 delay(1.seconds)
                                 attempt++
                             } else {
@@ -212,26 +170,13 @@ class KableBleClient(
                         }
                     }
                     
-                    // Pacing: Increased delay for Swing/Linux stability
                     if (index < packets.size - 1) {
-                        delay(500.milliseconds)
+                        delay(100.milliseconds)
                     }
                 }
-                println("Command sent successfully (${packets.size} packets)")
+                log("Command sent successfully (${packets.size} packets)")
             } catch (e: Exception) {
-                if (e is TimeoutCancellationException) {
-                    println("Error sending command: TIMEOUT (State: ${p.state.value})")
-                    println("Connection stall detected. Triggering reset...")
-                    stop()
-                } else if (e is CancellationException) {
-                    throw e
-                } else {
-                    println("Error sending command: ${e.message} (State: ${p.state.value})")
-                    if (e.message?.contains("Not connected") == true) {
-                        println("Connection failure detected. Triggering reset...")
-                        stop()
-                    }
-                }
+                log("Error sending command: ${e.message}")
             }
         }
     }
@@ -243,13 +188,9 @@ class KableBleClient(
         scope.launch {
             try {
                 p?.disconnect()
-                println("Disconnected from $deviceName")
+                log("Disconnected from $deviceName")
             } catch (e: Exception) {
-                println("Error during disconnect: ${e.message}")
-            } finally {
-                // Don't cancel the scope here if we want to allow re-start
-                // But for now, we cancel it to be safe
-                // scope.cancel() 
+                log("Error during disconnect: ${e.message}")
             }
         }
     }
@@ -260,9 +201,9 @@ class KableBleClient(
         peripheral = null
         try {
             p?.disconnect()
-            println("Synchronously disconnected from $deviceName")
+            log("Synchronously disconnected from $deviceName")
         } catch (e: Exception) {
-            println("Error during synchronous disconnect: ${e.message}")
+            log("Error during synchronous disconnect: ${e.message}")
         }
     }
 }

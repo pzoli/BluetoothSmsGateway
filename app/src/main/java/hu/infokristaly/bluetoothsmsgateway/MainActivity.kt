@@ -1,6 +1,7 @@
 package hu.infokristaly.bluetoothsmsgateway
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.Intent
@@ -11,14 +12,19 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresPermission
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import hu.infokristaly.bluetoothsmsgateway.ble.BLEMessage
+import hu.infokristaly.bluetoothsmsgateway.ble.MessageType
 import hu.infokristaly.bluetoothsmsgateway.ui.theme.BluetoothSmsGatewayTheme
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 
 class MainActivity : ComponentActivity() {
     private lateinit var bleServer: BleServer
@@ -57,9 +63,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             BluetoothSmsGatewayTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
+                    GatewayDashboard(
+                        modifier = Modifier.padding(innerPadding),
+                        onSimulateSms = { simulateIncomingSms() }
                     )
                 }
             }
@@ -73,9 +79,32 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.BLUETOOTH_CONNECT,
                 Manifest.permission.BLUETOOTH_ADVERTISE,
                 Manifest.permission.RECEIVE_SMS,
-                Manifest.permission.SEND_SMS
+                Manifest.permission.SEND_SMS,
+                Manifest.permission.READ_PHONE_STATE,
+                Manifest.permission.READ_SMS
             )
         )
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun simulateIncomingSms() {
+        if (!::bleServer.isInitialized) return
+        
+        val event = BLEMessage(
+            action = "sms_received",
+            type = MessageType.event,
+            payload = buildJsonObject {
+                put("from", JsonPrimitive("+36301112233"))
+                put("text", JsonPrimitive("Test simulation message from phone UI!"))
+            }
+        )
+        
+        try {
+            bleServer.sendEvent(event)
+            Toast.makeText(this, "Simulation event sent", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun checkBluetoothAndStart() {
@@ -111,17 +140,22 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    BluetoothSmsGatewayTheme {
-        Greeting("Android")
+fun GatewayDashboard(
+    modifier: Modifier = Modifier,
+    onSimulateSms: () -> Unit
+) {
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Bluetooth SMS Gateway is running",
+            modifier = Modifier.padding(bottom = 24.dp)
+        )
+        
+        Button(onClick = onSimulateSms) {
+            Text("Simulate Incoming SMS")
+        }
     }
 }

@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.telephony.SmsMessage
+import android.util.Log
 import hu.infokristaly.bluetoothsmsgateway.ble.BLEMessage
 import hu.infokristaly.bluetoothsmsgateway.ble.MessageType
 import kotlinx.serialization.json.JsonElement
@@ -20,17 +21,25 @@ class SmsReceiver: BroadcastReceiver(){
         context:Context?,
         intent:Intent
     ) {
+        Log.d("SmsReceiver", "onReceive triggered with action: ${intent.action}")
 
         if ("android.provider.Telephony.SMS_RECEIVED" == intent.getAction()) {
 
             val bundle =
-                intent.extras ?: return
+                intent.extras ?: run {
+                    Log.w("SmsReceiver", "Bundle is null")
+                    return
+                }
 
 
             val pdus =
-                bundle["pdus"] as Array<*>
+                bundle["pdus"] as? Array<*> ?: run {
+                    Log.w("SmsReceiver", "pdus extra is missing or malformed")
+                    return
+                }
 
             val format = bundle.getString("format")
+            Log.d("SmsReceiver", "Processing ${pdus.size} PDUs with format: $format")
 
             pdus.forEach {
                 val sms = SmsMessage.createFromPdu(
@@ -41,6 +50,8 @@ class SmsReceiver: BroadcastReceiver(){
                     sms.originatingAddress
                 val text =
                     sms.messageBody
+                
+                Log.d("SmsReceiver", "Received SMS from: $sender")
 
                 val event = BLEMessage(
                     action = "sms_received",
@@ -50,7 +61,17 @@ class SmsReceiver: BroadcastReceiver(){
                         put("text", JsonPrimitive(text))
                     }
                 )
-                BleServer.instance.sendEvent(event)
+                
+                try {
+                    // Try to access instance. If not initialized, it throws UninitializedPropertyAccessException
+                    val server = BleServer.instance
+                    Log.d("SmsReceiver", "Forwarding event to BleServer")
+                    server.sendEvent(event)
+                } catch (e: UninitializedPropertyAccessException) {
+                    Log.e("SmsReceiver", "BleServer.instance is NOT initialized. App might be killed in background.")
+                } catch (e: Exception) {
+                    Log.e("SmsReceiver", "Error sending event to BleServer: ${e.message}")
+                }
             }
 
         }

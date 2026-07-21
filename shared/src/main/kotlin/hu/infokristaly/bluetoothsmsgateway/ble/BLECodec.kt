@@ -25,7 +25,7 @@ object BLECodec {
 
     fun split(
         message: String,
-        mtu: Int = 20
+        mtu: Int = 180
     ): List<ByteArray> {
         val bytes = message.toByteArray(Charsets.UTF_8)
         val packets = mutableListOf<ByteArray>()

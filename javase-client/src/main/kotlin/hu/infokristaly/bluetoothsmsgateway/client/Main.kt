@@ -31,24 +31,28 @@ fun runBleClient() {
     })
 
     println("Starting BLE Client...")
-    client.start { message ->
-        if (message.type == MessageType.response) {
-            println("\n[RESPONSE] ${message.status} (ID: ${message.id})")
-            return@start
+    client.start(
+        onLog = { /* Already handled by internal println in KableBleClient */ },
+        onEvent = { message ->
+            if (message.type == MessageType.response) {
+                println("\n[RESPONSE] ${message.status} (ID: ${message.id})")
+                return@start
+            }
+            
+            println("\n[EVENT] ${message.action}")
+            if (message.action == "sms_received") {
+                val payload = BLECodec.json.decodeFromJsonElement(SmsReceivedPayload.serializer(), message.payload!!)
+                println("SMS from ${payload.from}: ${payload.text}")
+            }
         }
-        
-        println("\n[EVENT] ${message.action}")
-        if (message.action == "sms_received") {
-            val payload = BLECodec.json.decodeFromJsonElement(SmsReceivedPayload.serializer(), message.payload!!)
-            println("SMS from ${payload.from}: ${payload.text}")
-        }
-    }
+    )
 
     val scanner = Scanner(System.`in`)
     println("\nEnter 'send <phone> <text>' to send SMS, or 'quit' to exit:")
     
     while (true) {
         print("> ")
+        if (!scanner.hasNextLine()) break
         val line = scanner.nextLine()
         if (line == "quit") break
         

@@ -17,6 +17,8 @@
         tools:ignore="SmsAndCallLogPolicy" />
     <uses-permission android:name="android.permission.READ_SMS"
         tools:ignore="SmsAndCallLogPolicy" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"
+        tools:ignore="SmsAndCallLogPolicy" />
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

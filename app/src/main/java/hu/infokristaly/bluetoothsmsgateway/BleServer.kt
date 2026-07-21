@@ -270,7 +270,7 @@ class BleServer(
                 offset: Int,
                 value: ByteArray
             ) {
-                Log.d("BLE", "onDescriptorWriteRequest: ${descriptor.uuid}")
+                Log.d("BLE", "onDescriptorWriteRequest: ${descriptor.uuid} value=${value.joinToString(",")}")
                 if (CCCD_UUID == descriptor.uuid) {
                     descriptor.value = value
                     if (responseNeeded) {
@@ -283,6 +283,7 @@ class BleServer(
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun sendEvent(message: BLEMessage) {
+        Log.d("BLE", "sendEvent called for action: ${message.action}")
 
         val device = connectedDevice ?: run {
             Log.w("BLE", "No device connected, event dropped")
@@ -290,21 +291,30 @@ class BleServer(
         }
 
         val service =
-            server.getService(BleProtocol.SERVICE_UUID.toJavaUuid()) ?: return
+            server.getService(BleProtocol.SERVICE_UUID.toJavaUuid()) ?: run {
+                Log.e("BLE", "Service not found!")
+                return
+            }
 
         val characteristic =
-            service.getCharacteristic(BleProtocol.EVENT_UUID.toJavaUuid()) ?: return
+            service.getCharacteristic(BleProtocol.EVENT_UUID.toJavaUuid()) ?: run {
+                Log.e("BLE", "Event characteristic not found!")
+                return
+            }
 
         val packets = BLECodec.encodeToByteArrayList(message)
-        Log.d("BLE", "Sending event ${message.action} in ${packets.size} packets")
+        Log.d("BLE", "Sending event ${message.action} to ${device.address} in ${packets.size} packets")
         
         packets.forEachIndexed { index, packet ->
+            Log.d("BLE", "Sending packet ${index + 1}/${packets.size}: ${packet.size} bytes")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                server.notifyCharacteristicChanged(device, characteristic, false, packet)
+                val result = server.notifyCharacteristicChanged(device, characteristic, false, packet)
+                Log.d("BLE", "notifyCharacteristicChanged (API 33+) result: $result")
             } else {
                 @Suppress("DEPRECATION")
                 characteristic.value = packet
-                server.notifyCharacteristicChanged(device, characteristic, false)
+                val result = server.notifyCharacteristicChanged(device, characteristic, false)
+                Log.d("BLE", "notifyCharacteristicChanged (Legacy) result: $result")
             }
             // Small delay to prevent congestion on older devices or fast packets
             if (packets.size > 1) {

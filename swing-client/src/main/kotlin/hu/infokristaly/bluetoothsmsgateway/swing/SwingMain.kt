@@ -118,7 +118,11 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
                         "Scanning", "Connecting" -> statusLabel.foreground = Color(0xF1C40F)
                         else -> statusLabel.foreground = Color(0xE74C3C)
                     }
-                    appendLog("System", "BLE Status changed to: $status", Color.LIGHT_GRAY)
+                }
+            },
+            onLog = { message ->
+                SwingUtilities.invokeLater {
+                    appendLog("Log", message, Color.GRAY)
                 }
             },
             onEvent = { message ->
