@@ -84,6 +84,7 @@ class KableBleClient(
                 onStatusChange("Connecting")
                 peripheral!!.connect()
                 log("Connected to $deviceName")
+                log("NOTE: Encryption is enabled. If this is the first connection, look for a Pairing Request on your devices.")
                 onStatusChange("Connected")
                 
                 isRunning.set(true)

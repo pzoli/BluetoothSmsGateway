@@ -127,7 +127,7 @@ class BleServer(
             BluetoothGattCharacteristic(
                 BleProtocol.COMMAND_UUID.toJavaUuid(),
                 BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE or BluetoothGattCharacteristic.PROPERTY_READ,
-                BluetoothGattCharacteristic.PERMISSION_WRITE or BluetoothGattCharacteristic.PERMISSION_READ
+                BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED or BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
             )
 
 
@@ -135,14 +135,14 @@ class BleServer(
             BluetoothGattCharacteristic(
                 BleProtocol.EVENT_UUID.toJavaUuid(),
                 BluetoothGattCharacteristic.PROPERTY_NOTIFY,
-                BluetoothGattCharacteristic.PERMISSION_READ
+                BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
             )
 
         // Add CCCD descriptor to the event characteristic
         // This is REQUIRED for clients to subscribe to notifications
         val descriptor = BluetoothGattDescriptor(
             CCCD_UUID,
-            BluetoothGattDescriptor.PERMISSION_WRITE or BluetoothGattDescriptor.PERMISSION_READ
+            BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED
         )
         event.addDescriptor(descriptor)
 
