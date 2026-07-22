@@ -28,6 +28,9 @@ import hu.infokristaly.bluetoothsmsgateway.ble.MessageType
 import hu.infokristaly.bluetoothsmsgateway.ui.theme.BluetoothSmsGatewayTheme
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 
 class MainActivity : ComponentActivity() {
 
@@ -81,6 +84,7 @@ class MainActivity : ComponentActivity() {
                         isRunning = isServiceRunning,
                         onStart = { handleStart() },
                         onStop = { handleStop() },
+                        onScanKey = { scanKeypass() },
                         onSimulateSms = { simulateIncomingSms() }
                     )
                 }
@@ -130,6 +134,33 @@ class MainActivity : ComponentActivity() {
         BleForegroundService.start(this)
     }
 
+    private fun scanKeypass() {
+        val options = GmsBarcodeScannerOptions.Builder()
+            .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE)
+            .enableAutoZoom()
+            .build()
+
+        val scanner = GmsBarcodeScanning.getClient(this, options)
+
+        scanner.startScan()
+            .addOnSuccessListener { barcode ->
+                val rawValue = barcode.rawValue
+                if (rawValue != null && rawValue.length == 40) {
+                    try {
+                        BleServer.instance.storedKeypass = rawValue
+                        Toast.makeText(this, "Keypass updated successfully", Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        Toast.makeText(this, "Service not running, please start gateway first", Toast.LENGTH_LONG).show()
+                    }
+                } else {
+                    Toast.makeText(this, "Invalid QR code. Expected 40 chars.", Toast.LENGTH_LONG).show()
+                }
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Scanning failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+    }
+
     @SuppressLint("MissingPermission")
     private fun simulateIncomingSms() {
         try {
@@ -167,6 +198,7 @@ fun GatewayDashboard(
     isRunning: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    onScanKey: () -> Unit,
     onSimulateSms: () -> Unit
 ) {
     Column(
@@ -194,6 +226,15 @@ fun GatewayDashboard(
                 modifier = Modifier.fillMaxWidth(0.7f).padding(8.dp)
             ) {
                 Text("Stop Gateway")
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = onScanKey,
+                modifier = Modifier.fillMaxWidth(0.7f).padding(8.dp)
+            ) {
+                Text("Scan Security Keypass")
             }
             
             Spacer(modifier = Modifier.height(16.dp))

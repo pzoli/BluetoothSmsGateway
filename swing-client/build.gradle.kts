@@ -44,4 +44,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
     implementation("com.formdev:flatlaf:3.7.2")
     implementation("com.formdev:flatlaf-intellij-themes:3.7.2")
+
+    // QR Code generation
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.google.zxing:javase:3.5.3")
 }

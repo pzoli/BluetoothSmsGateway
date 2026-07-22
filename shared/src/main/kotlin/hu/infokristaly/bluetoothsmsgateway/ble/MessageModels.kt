@@ -10,7 +10,8 @@ data class BLEMessage(
     val action: String? = null,
     val status: Status? = null,
     val payload: JsonElement? = null,
-    val error: BLEError? = null
+    val error: BLEError? = null,
+    val keypass: String? = null
 )
 
 @Serializable

@@ -22,6 +22,7 @@ class KableBleClient(
     private val bleDispatcher = newSingleThreadContext("BLE")
     private val scope = CoroutineScope(bleDispatcher + SupervisorJob())
     private var onLogCallback: (String) -> Unit = {}
+    var keypass: String? = null
 
     private fun log(message: String) {
         println(message)
@@ -142,7 +143,8 @@ class KableBleClient(
                     characteristic = BleProtocol.COMMAND_UUID
                 )
                 
-                val packets = BLECodec.encodeToByteArrayList(message)
+                val messageWithKey = message.copy(keypass = keypass)
+                val packets = BLECodec.encodeToByteArrayList(messageWithKey)
                 log("Sending ${packets.size} packets...")
                 packets.forEachIndexed { index, packet ->
                     var success = false

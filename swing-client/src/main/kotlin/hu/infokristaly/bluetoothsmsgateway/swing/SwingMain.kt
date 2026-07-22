@@ -22,6 +22,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     private val callBtn = JButton("Call")
     private val rejectBtn = JButton("Reject")
     private val fetchContactsBtn = JButton("Fetch Contacts")
+    private val settingsBtn = JButton("Settings")
     private val statusLabel = JLabel("Status: Disconnected")
     private val connectionSwitch = JToggleButton("Connect")
     
@@ -31,6 +32,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     private var currentCallStatus: CallStatus = CallStatus.IDLE
 
     init {
+        client.keypass = KeypassManager.currentKeypass
         setupUI()
     }
 
@@ -67,6 +69,14 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         // Top Buttons
         val topBtnPanel = JPanel(FlowLayout(FlowLayout.RIGHT))
         
+        settingsBtn.addActionListener {
+            SettingsDialog(this) { newKey ->
+                client.keypass = newKey
+                appendLog("System", "Authentication key updated", Color.YELLOW)
+            }.isVisible = true
+        }
+        topBtnPanel.add(settingsBtn)
+
         fetchContactsBtn.isEnabled = false
         fetchContactsBtn.addActionListener { fetchContacts() }
         topBtnPanel.add(fetchContactsBtn)

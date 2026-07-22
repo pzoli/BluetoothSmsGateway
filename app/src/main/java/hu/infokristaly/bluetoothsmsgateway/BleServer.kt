@@ -58,6 +58,7 @@ class BleServer(
             BluetoothGattServer
 
     private var connectedDevice: BluetoothDevice? = null
+    var storedKeypass: String? = null
 
     private val telephonyManager = context.getSystemService(TelephonyManager::class.java)
     private val telecomManager = context.getSystemService(TelecomManager::class.java)
@@ -368,6 +369,11 @@ class BleServer(
     private fun processCommand(
         message: BLEMessage
     ){
+        if (storedKeypass != null && message.keypass != storedKeypass) {
+            Log.e("BLE", "Authentication failed! Expected: $storedKeypass, Received: ${message.keypass}")
+            return
+        }
+        
         when(message.action){
 
             "send_sms" -> {
