@@ -42,10 +42,19 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         addWindowListener(object : java.awt.event.WindowAdapter() {
             override fun windowClosing(e: java.awt.event.WindowEvent?) {
                 println("Closing application...")
-                runBlocking {
-                    client.disconnectSync()
-                }
-                System.exit(0)
+                Thread {
+                    try {
+                        runBlocking {
+                            withTimeoutOrNull(2000) {
+                                client.disconnectSync()
+                            }
+                        }
+                    } catch (ex: Exception) {
+                        println("Error during disconnect on exit: ${ex.message}")
+                    } finally {
+                        System.exit(0)
+                    }
+                }.start()
             }
         })
         

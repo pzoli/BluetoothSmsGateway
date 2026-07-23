@@ -29,15 +29,36 @@ class BleServer(
 ) {
     companion object {
         @SuppressLint("StaticFieldLeak")
-        lateinit var instance: BleServer
+        var instance: BleServer? = null
             private set
+            
+        private const val PREFS_NAME = "smsgw_prefs"
+        private const val KEY_STORED_KEYPASS = "stored_keypass"
             
         // Client Characteristic Configuration Descriptor (CCCD)
         private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }
 
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    var storedKeypass: String?
+        get() = prefs.getString(KEY_STORED_KEYPASS, null)
+        set(value) {
+            prefs.edit().putString(KEY_STORED_KEYPASS, value).apply()
+        }
+
     init {
         instance = this
+    }
+
+    private val advertiseCallback = object : AdvertiseCallback() {
+        override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
+            Log.d("BLE", "Advertising started")
+        }
+
+        override fun onStartFailure(errorCode: Int) {
+            Log.e("BLE", "Advertising failed: $errorCode")
+        }
     }
 
     private val advertiser by lazy {
@@ -49,16 +70,13 @@ class BleServer(
             BluetoothManager::class.java
         )
 
-
     private val adapter =
         manager.adapter
-
 
     private lateinit var server:
             BluetoothGattServer
 
     private var connectedDevice: BluetoothDevice? = null
-    var storedKeypass: String? = null
 
     private val telephonyManager = context.getSystemService(TelephonyManager::class.java)
     private val telecomManager = context.getSystemService(TelecomManager::class.java)
@@ -177,29 +195,14 @@ class BleServer(
         advertiser.startAdvertising(
             settings,
             data,
-            object : AdvertiseCallback() {
-
-                override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
-                    Log.d(
-                        "BLE",
-                        "Advertising started"
-                    )
-                }
-
-                override fun onStartFailure(errorCode: Int) {
-                    Log.e(
-                        "BLE",
-                        "Advertising failed: $errorCode"
-                    )
-                }
-            }
+            advertiseCallback
         )
     }
 
     @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT])
     private fun stopAdvertising() {
         try {
-            advertiser.stopAdvertising(object : AdvertiseCallback() {})
+            advertiser.stopAdvertising(advertiseCallback)
         } catch (e: Exception) {
             Log.e("BLE", "Error stopping advertising: ${e.message}")
         }
@@ -215,6 +218,9 @@ class BleServer(
         }
         stopAdvertising()
         connectedDevice = null
+        if (instance == this) {
+            instance = null
+        }
     }
 
     private val framer =
@@ -346,75 +352,99 @@ class BleServer(
 
         val packets = BLECodec.encodeToByteArrayList(message)
         Log.d("BLE", "Sending event ${message.action} to ${device.address} in ${packets.size} packets")
-        
-        packets.forEachIndexed { index, packet ->
-            Log.d("BLE", "Sending packet ${index + 1}/${packets.size}: ${packet.size} bytes")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val result = server.notifyCharacteristicChanged(device, characteristic, false, packet)
-                Log.d("BLE", "notifyCharacteristicChanged (API 33+) result: $result")
-            } else {
-                @Suppress("DEPRECATION")
-                characteristic.value = packet
-                val result = server.notifyCharacteristicChanged(device, characteristic, false)
-                Log.d("BLE", "notifyCharacteristicChanged (Legacy) result: $result")
+
+        Thread {
+            packets.forEachIndexed { index, packet ->
+                Log.d("BLE", "Sending packet ${index + 1}/${packets.size}: ${packet.size} bytes")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val result = server.notifyCharacteristicChanged(device, characteristic, false, packet)
+                    Log.d("BLE", "notifyCharacteristicChanged (API 33+) result: $result")
+                } else {
+                    @Suppress("DEPRECATION")
+                    characteristic.value = packet
+                    val result = server.notifyCharacteristicChanged(device, characteristic, false)
+                    Log.d("BLE", "notifyCharacteristicChanged (Legacy) result: $result")
+                }
+                // Small delay to prevent congestion on older devices or fast packets
+                if (packets.size > 1) {
+                    try {
+                        Thread.sleep(50)
+                    } catch (_: InterruptedException) {}
+                }
             }
-            // Small delay to prevent congestion on older devices or fast packets
-            if (packets.size > 1) {
-                Thread.sleep(50)
-            }
-        }
+        }.start()
     }
 
     @SuppressLint("MissingPermission")
     private fun processCommand(
         message: BLEMessage
     ){
-        if (storedKeypass != null && message.keypass != storedKeypass) {
-            Log.e("BLE", "Authentication failed! Expected: $storedKeypass, Received: ${message.keypass}")
+        val currentKey = storedKeypass
+        if (currentKey != null && message.keypass != currentKey) {
+            Log.e("BLE", "Authentication failed! Expected: $currentKey, Received: ${message.keypass}")
+            if (message.id != null) {
+                sendEvent(BLEProtocol.error(message.id!!, "UNAUTHORIZED", "Invalid keypass"))
+            }
             return
         }
         
-        when(message.action){
+        try {
+            when(message.action){
 
-            "send_sms" -> {
-                val payload = BLECodec.json.decodeFromJsonElement<SendSmsPayload>(message.payload!!)
-                Log.d("BLE", "Sending SMS to ${payload.phone}")
-                SmsManagerService.send(context, payload.phone, payload.text)
-                if (message.id != null) {
-                    sendEvent(BLEProtocol.ok(message.id!!))
+                "send_sms" -> {
+                    val payload = BLECodec.json.decodeFromJsonElement<SendSmsPayload>(message.payload!!)
+                    Log.d("BLE", "Sending SMS to ${payload.phone}")
+                    SmsManagerService.send(context, payload.phone, payload.text)
+                    if (message.id != null) {
+                        sendEvent(BLEProtocol.ok(message.id!!))
+                    }
+                }
+
+                "get_contacts" -> {
+                    Log.d("BLE", "Processing get_contacts request")
+                    val contacts = fetchContacts()
+                    if (message.id != null) {
+                        sendEvent(BLEProtocol.contactsResponse(message.id!!, contacts))
+                    }
+                }
+
+                "make_call" -> {
+                    val payload = BLECodec.json.decodeFromJsonElement<SendSmsPayload>(message.payload!!)
+                    Log.d("BLE", "Making call to ${payload.phone}")
+                    val intent = Intent(Intent.ACTION_CALL).apply {
+                        data = Uri.parse("tel:${payload.phone}")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                    if (message.id != null) {
+                        sendEvent(BLEProtocol.ok(message.id!!))
+                    }
+                }
+
+                "hang_up" -> {
+                    Log.d("BLE", "Ending or rejecting call")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        telecomManager.endCall()
+                    }
+                    if (message.id != null) {
+                        sendEvent(BLEProtocol.ok(message.id!!))
+                    }
+                }
+
+                "answer_call" -> {
+                    Log.d("BLE", "Answering call")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        telecomManager.acceptRingingCall()
+                    }
+                    if (message.id != null) {
+                        sendEvent(BLEProtocol.ok(message.id!!))
+                    }
                 }
             }
-
-            "get_contacts" -> {
-                Log.d("BLE", "Processing get_contacts request")
-                val contacts = fetchContacts()
-                if (message.id != null) {
-                    sendEvent(BLEProtocol.contactsResponse(message.id!!, contacts))
-                }
-            }
-
-            "make_call" -> {
-                val payload = BLECodec.json.decodeFromJsonElement<SendSmsPayload>(message.payload!!)
-                Log.d("BLE", "Making call to ${payload.phone}")
-                val intent = Intent(Intent.ACTION_CALL).apply {
-                    data = Uri.parse("tel:${payload.phone}")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(intent)
-            }
-
-            "hang_up" -> {
-                Log.d("BLE", "Ending or rejecting call")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    telecomManager.endCall()
-                }
-            }
-
-            "answer_call" -> {
-                Log.d("BLE", "Answering call")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    telecomManager.acceptRingingCall()
-                }
+        } catch (e: Exception) {
+            Log.e("BLE", "Error executing action '${message.action}': ${e.message}", e)
+            if (message.id != null) {
+                sendEvent(BLEProtocol.error(message.id!!, "EXECUTION_ERROR", e.message ?: "Unknown error"))
             }
         }
     }

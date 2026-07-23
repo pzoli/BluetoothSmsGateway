@@ -1,7 +1,7 @@
 package hu.infokristaly.bluetoothsmsgateway
 
 import android.Manifest
-import android.annotation.SuppressLint
+
 import android.app.ActivityManager
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
@@ -23,11 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import hu.infokristaly.bluetoothsmsgateway.ble.BLEMessage
-import hu.infokristaly.bluetoothsmsgateway.ble.MessageType
 import hu.infokristaly.bluetoothsmsgateway.ui.theme.BluetoothSmsGatewayTheme
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
@@ -84,8 +80,7 @@ class MainActivity : ComponentActivity() {
                         isRunning = isServiceRunning,
                         onStart = { handleStart() },
                         onStop = { handleStop() },
-                        onScanKey = { scanKeypass() },
-                        onSimulateSms = { simulateIncomingSms() }
+                        onScanKey = { scanKeypass() }
                     )
                 }
             }
@@ -136,7 +131,7 @@ class MainActivity : ComponentActivity() {
 
     private fun scanKeypass() {
         val options = GmsBarcodeScannerOptions.Builder()
-            .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE)
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
             .enableAutoZoom()
             .build()
 
@@ -146,12 +141,13 @@ class MainActivity : ComponentActivity() {
             .addOnSuccessListener { barcode ->
                 val rawValue = barcode.rawValue
                 if (rawValue != null && rawValue.length == 40) {
-                    try {
-                        BleServer.instance.storedKeypass = rawValue
-                        Toast.makeText(this, "Keypass updated successfully", Toast.LENGTH_SHORT).show()
-                    } catch (e: Exception) {
-                        Toast.makeText(this, "Service not running, please start gateway first", Toast.LENGTH_LONG).show()
+                    val prefs = getSharedPreferences("smsgw_prefs", Context.MODE_PRIVATE)
+                    prefs.edit().putString("stored_keypass", rawValue).apply()
+                    val server = BleServer.instance
+                    if (server != null) {
+                        server.storedKeypass = rawValue
                     }
+                    Toast.makeText(this, "Keypass saved successfully", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this, "Invalid QR code. Expected 40 chars.", Toast.LENGTH_LONG).show()
                 }
@@ -161,24 +157,7 @@ class MainActivity : ComponentActivity() {
             }
     }
 
-    @SuppressLint("MissingPermission")
-    private fun simulateIncomingSms() {
-        try {
-            val server = BleServer.instance
-            val event = BLEMessage(
-                action = "sms_received",
-                type = MessageType.event,
-                payload = buildJsonObject {
-                    put("from", JsonPrimitive("+36301112233"))
-                    put("text", JsonPrimitive("Test simulation from UI!"))
-                }
-            )
-            server.sendEvent(event)
-            Toast.makeText(this, "Simulation sent", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Toast.makeText(this, "Service not running or error: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-    }
+
 
     @Suppress("DEPRECATION")
     private fun isServiceRunning(): Boolean {
@@ -198,8 +177,7 @@ fun GatewayDashboard(
     isRunning: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
-    onScanKey: () -> Unit,
-    onSimulateSms: () -> Unit
+    onScanKey: () -> Unit
 ) {
     Column(
         modifier = modifier.fillMaxSize(),
@@ -235,15 +213,6 @@ fun GatewayDashboard(
                 modifier = Modifier.fillMaxWidth(0.7f).padding(8.dp)
             ) {
                 Text("Scan Security Keypass")
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Button(
-                onClick = onSimulateSms,
-                modifier = Modifier.fillMaxWidth(0.7f).padding(8.dp)
-            ) {
-                Text("Simulate Incoming SMS")
             }
         }
     }

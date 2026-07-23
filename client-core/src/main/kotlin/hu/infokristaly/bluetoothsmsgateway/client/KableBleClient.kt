@@ -29,13 +29,18 @@ class KableBleClient(
         onLogCallback(message)
     }
 
+    private var activeJob: Job? = null
+
     fun start(
         onStatusChange: (String) -> Unit = {},
         onLog: (String) -> Unit = {},
         onEvent: (BLEMessage) -> Unit
     ) {
         this.onLogCallback = onLog
-        scope.launch {
+        activeJob?.cancel()
+        framer.reset()
+
+        activeJob = scope.launch {
             try {
                 if (peripheral != null) {
                     try {
@@ -71,7 +76,7 @@ class KableBleClient(
                 log("Found device: ${advertisement.name} [${advertisement.identifier}]")
                 peripheral = Peripheral(advertisement)
 
-                scope.launch {
+                launch {
                     peripheral!!.state.collect { state ->
                         log("Connection state: $state")
                         if (state is State.Disconnected) {
@@ -96,7 +101,7 @@ class KableBleClient(
 
                 log("Subscribing to notifications for ${BleProtocol.EVENT_UUID}...")
                 
-                scope.launch {
+                launch {
                     try {
                         peripheral!!.observe(eventChar)
                             .collect { data ->
@@ -119,6 +124,9 @@ class KableBleClient(
 
                 log("Client is now ready for commands.")
 
+            } catch (e: CancellationException) {
+                log("BLE Client operation cancelled")
+                isRunning.set(false)
             } catch (e: Exception) {
                 log("BLE Client Error: ${e.message}")
                 isRunning.set(false)
@@ -186,6 +194,9 @@ class KableBleClient(
 
     fun stop() {
         isRunning.set(false)
+        activeJob?.cancel()
+        activeJob = null
+        framer.reset()
         val p = peripheral
         peripheral = null
         scope.launch {
@@ -200,6 +211,9 @@ class KableBleClient(
 
     suspend fun disconnectSync() {
         isRunning.set(false)
+        activeJob?.cancel()
+        activeJob = null
+        framer.reset()
         val p = peripheral
         peripheral = null
         try {

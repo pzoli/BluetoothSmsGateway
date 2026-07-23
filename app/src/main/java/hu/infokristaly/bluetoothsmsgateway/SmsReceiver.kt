@@ -41,37 +41,35 @@ class SmsReceiver: BroadcastReceiver(){
             val format = bundle.getString("format")
             Log.d("SmsReceiver", "Processing ${pdus.size} PDUs with format: $format")
 
-            pdus.forEach {
-                val sms = SmsMessage.createFromPdu(
-                    it as ByteArray,
-                    format
-                )
-                val sender =
-                    sms.originatingAddress
-                val text =
-                    sms.messageBody
-                
-                Log.d("SmsReceiver", "Received SMS from: $sender")
+            val messages = pdus.mapNotNull { pdu ->
+                (pdu as? ByteArray)?.let { SmsMessage.createFromPdu(it, format) }
+            }
 
-                val event = BLEMessage(
-                    action = "sms_received",
-                    type = MessageType.event,
-                    payload = buildJsonObject {
-                        put("from", JsonPrimitive(sender ?: ""))
-                        put("text", JsonPrimitive(text))
-                    }
-                )
-                
-                try {
-                    // Try to access instance. If not initialized, it throws UninitializedPropertyAccessException
-                    val server = BleServer.instance
-                    Log.d("SmsReceiver", "Forwarding event to BleServer")
-                    server.sendEvent(event)
-                } catch (e: UninitializedPropertyAccessException) {
-                    Log.e("SmsReceiver", "BleServer.instance is NOT initialized. App might be killed in background.")
-                } catch (e: Exception) {
-                    Log.e("SmsReceiver", "Error sending event to BleServer: ${e.message}")
+            if (messages.isEmpty()) {
+                Log.w("SmsReceiver", "No valid SMS messages created from PDUs")
+                return
+            }
+
+            val sender = messages.first().originatingAddress ?: ""
+            val fullText = messages.joinToString("") { it.messageBody ?: "" }
+
+            Log.d("SmsReceiver", "Received SMS from: $sender (length: ${fullText.length})")
+
+            val event = BLEMessage(
+                action = "sms_received",
+                type = MessageType.event,
+                payload = buildJsonObject {
+                    put("from", JsonPrimitive(sender))
+                    put("text", JsonPrimitive(fullText))
                 }
+            )
+
+            val server = BleServer.instance
+            if (server != null) {
+                Log.d("SmsReceiver", "Forwarding event to BleServer")
+                server.sendEvent(event)
+            } else {
+                Log.e("SmsReceiver", "BleServer.instance is null. Service might not be running.")
             }
 
         }
