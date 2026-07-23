@@ -135,8 +135,8 @@ class BleServer(
         val command =
             BluetoothGattCharacteristic(
                 BleProtocol.COMMAND_UUID.toJavaUuid(),
-                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE or BluetoothGattCharacteristic.PROPERTY_READ,
-                BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED or BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
+                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
+                BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED
             )
 
 
@@ -144,14 +144,14 @@ class BleServer(
             BluetoothGattCharacteristic(
                 BleProtocol.EVENT_UUID.toJavaUuid(),
                 BluetoothGattCharacteristic.PROPERTY_NOTIFY,
-                BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
+                0
             )
 
         // Add CCCD descriptor to the event characteristic
         // This is REQUIRED for clients to subscribe to notifications
         val descriptor = BluetoothGattDescriptor(
             CCCD_UUID,
-            BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED
+            BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED
         )
         event.addDescriptor(descriptor)
 
@@ -160,8 +160,6 @@ class BleServer(
 
 
         server.addService(service)
-
-        startAdvertising()
     }
 
     @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT])
@@ -237,6 +235,16 @@ class BleServer(
 
     private val callback =
         object: BluetoothGattServerCallback(){
+
+            @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE])
+            override fun onServiceAdded(status: Int, service: BluetoothGattService) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    Log.d("BLE", "Service added successfully: ${service.uuid}")
+                    startAdvertising()
+                } else {
+                    Log.e("BLE", "Failed to add service: $status")
+                }
+            }
 
             @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE])
             override fun onConnectionStateChange(
