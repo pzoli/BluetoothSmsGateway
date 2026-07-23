@@ -9,6 +9,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -88,6 +90,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleStart() {
+        if (!Settings.canDrawOverlays(this)) {
+            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+            startActivity(intent)
+            Toast.makeText(this, "Please enable 'Display over other apps' to allow background calls", Toast.LENGTH_LONG).show()
+            return
+        }
+
         val permissions = mutableListOf(
             Manifest.permission.BLUETOOTH_CONNECT,
             Manifest.permission.BLUETOOTH_ADVERTISE,
@@ -99,6 +108,9 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.CALL_PHONE,
             Manifest.permission.ANSWER_PHONE_CALLS
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            permissions.add(Manifest.permission.FOREGROUND_SERVICE_PHONE_CALL)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }

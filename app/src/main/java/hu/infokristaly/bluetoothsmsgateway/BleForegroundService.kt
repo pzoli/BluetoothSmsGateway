@@ -46,10 +46,14 @@ class BleForegroundService : Service() {
         val notification = createNotification()
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+            }
             startForeground(
                 NOTIFICATION_ID, 
                 notification, 
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                type
             )
         } else {
             startForeground(NOTIFICATION_ID, notification)

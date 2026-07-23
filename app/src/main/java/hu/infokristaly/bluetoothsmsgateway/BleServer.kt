@@ -439,7 +439,36 @@ class BleServer(
                         data = Uri.parse("tel:${payload.phone}")
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
-                    context.startActivity(intent)
+                    
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        val options = android.app.ActivityOptions.makeBasic()
+                        
+                        // Use modern constants for Android 16+ if available, fallback to the generic one for Android 14/15
+                        // Note: Starting from Android 14, we must use setPendingIntentCreatorBackgroundActivityStartMode
+                        // when creating the PendingIntent. setPendingIntentBackgroundActivityStartMode is for the sender.
+                        if (Build.VERSION.SDK_INT >= 36) { // Android 16
+                            options.setPendingIntentCreatorBackgroundActivityStartMode(android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS) 
+                        } else {
+                            options.setPendingIntentCreatorBackgroundActivityStartMode(android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                        }
+                        
+                        val pendingIntent = android.app.PendingIntent.getActivity(
+                            context, 
+                            0, 
+                            intent, 
+                            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+                            options.toBundle()
+                        )
+                        try {
+                            pendingIntent.send()
+                        } catch (e: Exception) {
+                            Log.e("BLE", "Failed to send PendingIntent for call: ${e.message}")
+                            context.startActivity(intent)
+                        }
+                    } else {
+                        context.startActivity(intent)
+                    }
+
                     if (message.id != null) {
                         sendEvent(BLEProtocol.ok(message.id!!))
                     }
