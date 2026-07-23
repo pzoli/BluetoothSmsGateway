@@ -89,6 +89,11 @@ object BLEProtocol {
         )
     }
 
+    fun serverStopping() = BLEMessage(
+        type = MessageType.event,
+        action = "server_stopping"
+    )
+
     fun ok(id: Long) = BLEMessage(
         id = id,
         type = MessageType.response,

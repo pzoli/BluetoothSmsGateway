@@ -26,6 +26,8 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     private val statusLabel = JLabel("Status: Disconnected")
     private val connectionSwitch = JToggleButton("Connect")
     
+    private var isManualDisconnect = false
+    
     private val contactsRoot = DefaultMutableTreeNode("Contacts")
     private val contactsTree = JTree(contactsRoot)
 
@@ -204,10 +206,22 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     }
 
     private fun startBle() {
+        isManualDisconnect = true // temporary true to avoid alert during start-up cleanup
         client.start(
             onStatusChange = { status ->
                 SwingUtilities.invokeLater {
+                    // Only arm the alert once we are actually connected.
+                    // This avoids the initial "Disconnected" state from triggering an alert during startup.
+                    if (status == "Connected") {
+                        isManualDisconnect = false
+                    }
+                    
                     statusLabel.text = "Status: $status"
+                    appendLog("System", "Connection status: $status", Color.GRAY)
+                    
+                    val titlePrefix = if (status == "Connected") "● " else "○ "
+                    title = "$titlePrefix Bluetooth SMS Gateway [$status]"
+
                     when (status) {
                         "Connected" -> {
                             statusLabel.foreground = Color(0x2ECC71)
@@ -215,12 +229,14 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
                             callBtn.isEnabled = true
                             fetchContactsBtn.isEnabled = true
                             connectionSwitch.isSelected = true
+                            connectionSwitch.text = "Disconnect"
                         }
                         "Scanning", "Connecting" -> {
                             statusLabel.foreground = Color(0xF1C40F)
                             sendBtn.isEnabled = false
                             callBtn.isEnabled = false
                             fetchContactsBtn.isEnabled = false
+                            connectionSwitch.text = "Connecting..."
                         }
                         else -> {
                             statusLabel.foreground = Color(0xE74C3C)
@@ -228,6 +244,12 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
                             callBtn.isEnabled = false
                             fetchContactsBtn.isEnabled = false
                             connectionSwitch.isSelected = false
+                            connectionSwitch.text = "Connect"
+                            
+                            if (status == "Disconnected" && !isManualDisconnect) {
+                                appendLog("ALERT", "Bluetooth connection lost!", Color.RED)
+                                isManualDisconnect = true // Prevent double alerts
+                            }
                         }
                     }
                 }
@@ -246,12 +268,15 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     }
 
     private fun stopBle() {
+        isManualDisconnect = true
         client.stop()
         sendBtn.isEnabled = false
         callBtn.isEnabled = false
         fetchContactsBtn.isEnabled = false
         statusLabel.text = "Status: Disconnected"
         statusLabel.foreground = Color(0xAAAAAA)
+        connectionSwitch.text = "Connect"
+        title = "Bluetooth SMS Gateway [Disconnected]"
         appendLog("System", "Manual disconnection triggered", Color.LIGHT_GRAY)
     }
 
@@ -271,7 +296,13 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
 
         if (message.type == MessageType.response) {
             val color = if (message.status == Status.ok) Color(0x3498DB) else Color(0xE74C3C)
-            appendLog("RESPONSE", "${message.status} (ID: ${message.id})", color)
+            val err = message.error
+            val logText = if (message.status == Status.error && err != null) {
+                "${message.status}: [${err.code}] ${err.message} (ID: ${message.id})"
+            } else {
+                "${message.status} (ID: ${message.id})"
+            }
+            appendLog("RESPONSE", logText, color)
             return
         }
         

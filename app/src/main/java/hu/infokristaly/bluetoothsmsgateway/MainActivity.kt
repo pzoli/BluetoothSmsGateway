@@ -141,13 +141,11 @@ class MainActivity : ComponentActivity() {
             .addOnSuccessListener { barcode ->
                 val rawValue = barcode.rawValue
                 if (rawValue != null && rawValue.length == 40) {
-                    val prefs = getSharedPreferences("smsgw_prefs", Context.MODE_PRIVATE)
-                    prefs.edit().putString("stored_keypass", rawValue).apply()
                     val server = BleServer.instance
                     if (server != null) {
                         server.storedKeypass = rawValue
                     }
-                    Toast.makeText(this, "Keypass saved successfully", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Keypass set for this session", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this, "Invalid QR code. Expected 40 chars.", Toast.LENGTH_LONG).show()
                 }

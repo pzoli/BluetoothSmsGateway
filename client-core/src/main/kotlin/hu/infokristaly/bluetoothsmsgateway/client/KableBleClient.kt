@@ -19,8 +19,12 @@ class KableBleClient(
     private var peripheral: Peripheral? = null
     private val framer = BLEFramer()
     private val isRunning = AtomicBoolean(false)
-    private val bleDispatcher = newSingleThreadContext("BLE")
-    private val scope = CoroutineScope(bleDispatcher + SupervisorJob())
+    private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        log("CRITICAL BLE ERROR: ${throwable.message}")
+        isRunning.set(false)
+    }
+
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob() + exceptionHandler)
     private var onLogCallback: (String) -> Unit = {}
     var keypass: String? = null
 
@@ -43,16 +47,17 @@ class KableBleClient(
         activeJob = scope.launch {
             try {
                 if (peripheral != null) {
+                    log("Cleaning up old peripheral connection...")
                     try {
                         peripheral!!.disconnect()
                     } catch (_: Exception) {}
                     peripheral = null
+                    delay(500.milliseconds) 
                 }
                 
-                // No filters for maximum visibility during debugging
+                // Now we are ready for a real connection attempt
                 val scanner = Scanner()
-
-                log("Scanning for everything (Looking for $deviceName)...")
+                log("Scanning for $deviceName...")
                 onStatusChange("Scanning")
                 
                 val advertisement = withTimeoutOrNull(20.seconds) {
@@ -74,21 +79,38 @@ class KableBleClient(
                 }
 
                 log("Found device: ${advertisement.name} [${advertisement.identifier}]")
-                peripheral = Peripheral(advertisement)
+                val p = Peripheral(advertisement)
+                peripheral = p
 
-                launch {
-                    peripheral!!.state.collect { state ->
-                        log("Connection state: $state")
+                // Start monitoring state in a separate coroutine that lives as long as the client is active
+                scope.launch {
+                    log("DEBUG: State observer flow started for ${advertisement.identifier}")
+                    p.state.collect { state ->
+                        log("Connection state change: $state")
+                        val statusString = when (state) {
+                            is State.Connecting -> "Connecting"
+                            is State.Connected -> "Connected"
+                            is State.Disconnecting -> "Disconnecting"
+                            is State.Disconnected -> "Disconnected"
+                        }
+                        onStatusChange(statusString)
+                        
                         if (state is State.Disconnected) {
                             isRunning.set(false)
+                            log("Detected Disconnected state. BLE communication marked as stopped.")
                         }
                     }
+                    log("DEBUG: State observer flow terminated")
                 }
 
-                log("Connecting to $deviceName...")
+                log("Connecting to $deviceName (timeout 15s)...")
                 onStatusChange("Connecting")
-                peripheral!!.connect()
-                log("Connected to $deviceName")
+                
+                withTimeout(15.seconds) {
+                    p.connect()
+                }
+                
+                log("Successfully connected to $deviceName")
                 log("NOTE: Encryption is enabled. If this is the first connection, look for a Pairing Request on your devices.")
                 onStatusChange("Connected")
                 
@@ -103,14 +125,20 @@ class KableBleClient(
                 
                 launch {
                     try {
-                        peripheral!!.observe(eventChar)
+                        p.observe(eventChar)
                             .collect { data ->
                                 log("DEBUG: Received raw packet (${data.size} bytes)")
                                 val messages = framer.append(data)
                                 messages.forEach { msgJson ->
                                     try {
                                         val message = BLECodec.decode(msgJson)
-                                        onEvent(message)
+                                        if (message.action == "server_stopping") {
+                                            log("SERVER SIGNAL: Server is stopping. Disconnecting...")
+                                            isRunning.set(false)
+                                            peripheral?.disconnect()
+                                        } else {
+                                            onEvent(message)
+                                        }
                                     } catch (e: Exception) {
                                         log("Error decoding event: ${e.message}")
                                         log("Raw JSON: $msgJson")
@@ -124,11 +152,16 @@ class KableBleClient(
 
                 log("Client is now ready for commands.")
 
+            } catch (e: TimeoutCancellationException) {
+                log("Connection timed out. Check if phone is in range.")
+                onStatusChange("Timeout")
+                isRunning.set(false)
             } catch (e: CancellationException) {
                 log("BLE Client operation cancelled")
                 isRunning.set(false)
             } catch (e: Exception) {
                 log("BLE Client Error: ${e.message}")
+                onStatusChange("Error")
                 isRunning.set(false)
             }
         }

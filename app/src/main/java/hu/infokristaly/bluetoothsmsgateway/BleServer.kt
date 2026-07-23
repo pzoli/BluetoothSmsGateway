@@ -32,20 +32,11 @@ class BleServer(
         var instance: BleServer? = null
             private set
             
-        private const val PREFS_NAME = "smsgw_prefs"
-        private const val KEY_STORED_KEYPASS = "stored_keypass"
-            
         // Client Characteristic Configuration Descriptor (CCCD)
         private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }
 
-    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-
-    var storedKeypass: String?
-        get() = prefs.getString(KEY_STORED_KEYPASS, null)
-        set(value) {
-            prefs.edit().putString(KEY_STORED_KEYPASS, value).apply()
-        }
+    var storedKeypass: String? = null
 
     init {
         instance = this
@@ -213,6 +204,23 @@ class BleServer(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && telephonyCallback != null) {
             telephonyManager.unregisterTelephonyCallback(telephonyCallback)
         }
+        
+        connectedDevice?.let { device ->
+            if (::server.isInitialized) {
+                Log.d("BLE", "Notifying and cancelling connection to ${device.address} before stopping")
+                try {
+                    // Send explicit event to client
+                    sendEvent(BLEProtocol.serverStopping())
+                    // Give a bit more time for the packet to be sent
+                    Thread.sleep(500)
+                    server.cancelConnection(device)
+                    Thread.sleep(200)
+                } catch (e: Exception) {
+                    Log.e("BLE", "Error during stop sequence: ${e.message}")
+                }
+            }
+        }
+
         if (::server.isInitialized) {
             server.close()
         }
@@ -380,7 +388,15 @@ class BleServer(
         message: BLEMessage
     ){
         val currentKey = storedKeypass
-        if (currentKey != null && message.keypass != currentKey) {
+        if (currentKey == null) {
+            Log.e("BLE", "Unauthorized access attempt: No keypass set on server. Scan QR code first.")
+            if (message.id != null) {
+                sendEvent(BLEProtocol.error(message.id!!, "UNAUTHORIZED", "Server has no keypass. Scan QR code on phone."))
+            }
+            return
+        }
+
+        if (message.keypass != currentKey) {
             Log.e("BLE", "Authentication failed! Expected: $currentKey, Received: ${message.keypass}")
             if (message.id != null) {
                 sendEvent(BLEProtocol.error(message.id!!, "UNAUTHORIZED", "Invalid keypass"))
