@@ -33,6 +33,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     private val contactsTree = JTree(contactsRoot)
 
     private var currentCallStatus: CallStatus = CallStatus.IDLE
+    private var contacts: List<Contact> = emptyList()
 
     init {
         client.keypass = KeypassManager.currentKeypass
@@ -329,7 +330,9 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
 
     private fun updateCallUI(status: CallStatus, phoneNumber: String? = null) {
         currentCallStatus = status
-        val statusMsg = if (phoneNumber != null) "$status ($phoneNumber)" else "$status"
+        val name = phoneNumber?.let { findContactName(it) }
+        val displayName = if (name != null) "$name ($phoneNumber)" else phoneNumber ?: "Unknown"
+        val statusMsg = "$status [$displayName]"
         appendLog("System", "Phone status: $statusMsg", Color.LIGHT_GRAY)
         when (status) {
             CallStatus.IDLE -> {
@@ -358,6 +361,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     }
 
     private fun updateContactsTree(contacts: List<Contact>) {
+        this.contacts = contacts
         contactsRoot.removeAllChildren()
         contacts.forEach { contact ->
             val nameNode = DefaultMutableTreeNode(contact.name)
@@ -367,6 +371,15 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
             contactsRoot.add(nameNode)
         }
         (contactsTree.model as DefaultTreeModel).reload()
+    }
+
+    private fun findContactName(phoneNumber: String): String? {
+        val sanitizedSearch = phoneNumber.replace(Regex("[\\s\\-()/]"), "").takeLast(9)
+        return contacts.find { contact ->
+            contact.numbers.any { number ->
+                number.replace(Regex("[\\s\\-()/]"), "").takeLast(9) == sanitizedSearch
+            }
+        }?.name
     }
 
     private fun fetchContacts() {
