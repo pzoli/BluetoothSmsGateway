@@ -17,6 +17,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     private val client = KableBleClient()
     private val logPane = JTextPane()
     private val phoneField = JTextField()
+    private val filterField = JTextField()
     private val msgArea = JTextArea(3, 20)
     private val sendBtn = JButton("Send SMS")
     private val callBtn = JButton("Call")
@@ -109,9 +110,20 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         logPane.font = Font("Monospaced", Font.PLAIN, 12)
         logScroll.border = BorderFactory.createTitledBorder("Activity Log")
 
+        // Left Panel (Filter + Tree)
+        val leftPanel = JPanel(BorderLayout(5, 5))
+        filterField.putClientProperty("JTextField.placeholderText", "Filter by name...")
+        filterField.document.addDocumentListener(object : javax.swing.event.DocumentListener {
+            override fun insertUpdate(e: javax.swing.event.DocumentEvent?) { applyFilter() }
+            override fun removeUpdate(e: javax.swing.event.DocumentEvent?) { applyFilter() }
+            override fun changedUpdate(e: javax.swing.event.DocumentEvent?) { applyFilter() }
+        })
+        leftPanel.add(filterField, BorderLayout.NORTH)
+        
         val treeScroll = JScrollPane(contactsTree)
         treeScroll.border = BorderFactory.createTitledBorder("Contacts")
-        treeScroll.preferredSize = Dimension(250, 0)
+        leftPanel.add(treeScroll, BorderLayout.CENTER)
+        leftPanel.preferredSize = Dimension(250, 0)
         
         contactsTree.addTreeSelectionListener {
             val node = contactsTree.lastSelectedPathComponent as? DefaultMutableTreeNode
@@ -124,7 +136,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
             }
         }
 
-        val splitPane = JSplitPane(JSplitPane.HORIZONTAL_SPLIT, treeScroll, logScroll)
+        val splitPane = JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, logScroll)
         splitPane.dividerLocation = 250
         mainPanel.add(splitPane, BorderLayout.CENTER)
 
@@ -363,8 +375,14 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
 
     private fun updateContactsTree(contacts: List<Contact>) {
         this.contacts = contacts
+        applyFilter()
+    }
+
+    private fun applyFilter() {
+        val filterText = filterField.text.lowercase()
         contactsRoot.removeAllChildren()
-        contacts.forEach { contact ->
+        
+        contacts.filter { it.name.lowercase().contains(filterText) }.forEach { contact ->
             val nameNode = DefaultMutableTreeNode(contact.name)
             contact.numbers.forEach { number ->
                 nameNode.add(DefaultMutableTreeNode(number))
@@ -372,6 +390,13 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
             contactsRoot.add(nameNode)
         }
         (contactsTree.model as DefaultTreeModel).reload()
+        
+        // Expand all nodes if filtering
+        if (filterText.isNotEmpty()) {
+            for (i in 0 until contactsTree.rowCount) {
+                contactsTree.expandRow(i)
+            }
+        }
     }
 
     private fun findContactName(phoneNumber: String): String? {
