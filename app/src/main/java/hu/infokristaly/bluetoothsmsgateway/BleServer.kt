@@ -17,6 +17,7 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.toJavaUuid
 import java.util.UUID
+import java.util.concurrent.Executors
 import android.provider.ContactsContract
 import android.telephony.TelephonyManager
 import android.telephony.TelephonyCallback
@@ -70,6 +71,8 @@ class BleServer(
             BluetoothGattServer
 
     private var connectedDevice: BluetoothDevice? = null
+
+    private val commandExecutor = Executors.newSingleThreadExecutor()
 
     private val telephonyManager = context.getSystemService(TelephonyManager::class.java)
     private val telecomManager = context.getSystemService(TelecomManager::class.java)
@@ -310,7 +313,9 @@ class BleServer(
                         val request =
                             BLECodec.decode(text)
                         Log.d("BLE", "Decoded message: ${request.action} (ID: ${request.id})")
-                        processCommand(request)
+                        commandExecutor.execute {
+                            processCommand(request)
+                        }
                     } catch (e: Exception) {
                         Log.e("BLE", "Error decoding message: ${e.message}")
                         Log.e("BLE", "Raw text: $text")
@@ -387,7 +392,7 @@ class BleServer(
                 // Small delay to prevent congestion on older devices or fast packets
                 if (packets.size > 1) {
                     try {
-                        Thread.sleep(50)
+                        Thread.sleep(100)
                     } catch (_: InterruptedException) {}
                 }
             }
