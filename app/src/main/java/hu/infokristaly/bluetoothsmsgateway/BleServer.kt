@@ -22,6 +22,8 @@ import android.telephony.TelephonyManager
 import android.telephony.TelephonyCallback
 import android.telecom.TelecomManager
 import android.net.Uri
+import android.media.AudioManager
+import android.media.AudioDeviceInfo
 
 @OptIn(ExperimentalUuidApi::class)
 class BleServer(
@@ -71,6 +73,7 @@ class BleServer(
 
     private val telephonyManager = context.getSystemService(TelephonyManager::class.java)
     private val telecomManager = context.getSystemService(TelecomManager::class.java)
+    private val audioManager = context.getSystemService(AudioManager::class.java)
 
     @SuppressLint("MissingPermission")
     private val telephonyCallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -493,12 +496,55 @@ class BleServer(
                         sendEvent(BLEProtocol.ok(message.id!!))
                     }
                 }
+
+                "set_speaker" -> {
+                    val enabled = BLECodec.json.decodeFromJsonElement<Boolean>(message.payload!!)
+                    Log.d("BLE", "Setting speakerphone to $enabled")
+                    setSpeakerphone(enabled)
+                    if (message.id != null) {
+                        sendEvent(BLEProtocol.ok(message.id!!))
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e("BLE", "Error executing action '${message.action}': ${e.message}", e)
             if (message.id != null) {
                 sendEvent(BLEProtocol.error(message.id!!, "EXECUTION_ERROR", e.message ?: "Unknown error"))
             }
+        }
+    }
+
+    private fun setSpeakerphone(enabled: Boolean) {
+        try {
+            if (enabled) {
+                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            }
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val devices = audioManager.availableCommunicationDevices
+                val speakerDevice = devices.find { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                if (enabled) {
+                    if (speakerDevice != null) {
+                        val result = audioManager.setCommunicationDevice(speakerDevice)
+                        Log.d("BLE", "setCommunicationDevice (speaker) result: $result")
+                    } else {
+                        Log.e("BLE", "Built-in speaker device not found")
+                    }
+                } else {
+                    audioManager.clearCommunicationDevice()
+                    Log.d("BLE", "Communication device cleared")
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.isSpeakerphoneOn = enabled
+                Log.d("BLE", "Legacy setSpeakerphoneOn($enabled) called")
+            }
+            
+            if (!enabled) {
+                audioManager.mode = AudioManager.MODE_NORMAL
+            }
+        } catch (e: Exception) {
+            Log.e("BLE", "Failed to set speakerphone: ${e.message}")
         }
     }
 

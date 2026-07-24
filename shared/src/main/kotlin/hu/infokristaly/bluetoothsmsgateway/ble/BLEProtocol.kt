@@ -79,6 +79,15 @@ object BLEProtocol {
         )
     }
 
+    fun setSpeaker(id: Long, enabled: Boolean): BLEMessage {
+        return BLEMessage(
+            id = id,
+            type = MessageType.request,
+            action = "set_speaker",
+            payload = BLECodec.json.encodeToJsonElement(enabled)
+        )
+    }
+
     fun callStatusEvent(status: CallStatus, phone: String? = null): BLEMessage {
         return BLEMessage(
             type = MessageType.event,

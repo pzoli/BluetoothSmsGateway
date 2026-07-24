@@ -20,6 +20,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     private val msgArea = JTextArea(3, 20)
     private val sendBtn = JButton("Send SMS")
     private val callBtn = JButton("Call")
+    private val speakerBtn = JToggleButton("Speaker")
     private val rejectBtn = JButton("Reject")
     private val fetchContactsBtn = JButton("Fetch Contacts")
     private val settingsBtn = JButton("Settings")
@@ -148,6 +149,12 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         callBtn.addActionListener { handleCallAction() }
         phonePanel.add(callBtn)
 
+        speakerBtn.isEnabled = false
+        speakerBtn.addActionListener {
+            client.sendCommand(BLEProtocol.setSpeaker(System.currentTimeMillis(), speakerBtn.isSelected))
+        }
+        phonePanel.add(speakerBtn)
+
         rejectBtn.isVisible = false
         rejectBtn.background = Color(0xE74C3C)
         rejectBtn.foreground = Color.WHITE
@@ -227,6 +234,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
                             statusLabel.foreground = Color(0x2ECC71)
                             sendBtn.isEnabled = true
                             callBtn.isEnabled = true
+                            speakerBtn.isEnabled = true
                             fetchContactsBtn.isEnabled = true
                             connectionSwitch.isSelected = true
                             connectionSwitch.text = "Disconnect"
@@ -235,6 +243,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
                             statusLabel.foreground = Color(0xF1C40F)
                             sendBtn.isEnabled = false
                             callBtn.isEnabled = false
+                            speakerBtn.isEnabled = false
                             fetchContactsBtn.isEnabled = false
                             connectionSwitch.text = "Connecting..."
                         }
@@ -242,6 +251,8 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
                             statusLabel.foreground = Color(0xE74C3C)
                             sendBtn.isEnabled = false
                             callBtn.isEnabled = false
+                            speakerBtn.isEnabled = false
+                            speakerBtn.isSelected = false
                             fetchContactsBtn.isEnabled = false
                             connectionSwitch.isSelected = false
                             connectionSwitch.text = "Connect"
@@ -272,6 +283,8 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         client.stop()
         sendBtn.isEnabled = false
         callBtn.isEnabled = false
+        speakerBtn.isEnabled = false
+        speakerBtn.isSelected = false
         fetchContactsBtn.isEnabled = false
         statusLabel.text = "Status: Disconnected"
         statusLabel.foreground = Color(0xAAAAAA)
@@ -322,6 +335,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
                 callBtn.text = "Call"
                 callBtn.background = Color(0x3498DB)
                 callBtn.foreground = Color.WHITE
+                speakerBtn.isSelected = false
                 rejectBtn.isVisible = false
             }
             CallStatus.RINGING -> {
