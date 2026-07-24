@@ -296,7 +296,7 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     private fun handleBleEvent(message: BLEMessage) {
         if (message.action == "call_status") {
             val payload = BLECodec.json.decodeFromJsonElement(CallStatusPayload.serializer(), message.payload!!)
-            updateCallUI(payload.status)
+            updateCallUI(payload.status, payload.phoneNumber)
             return
         }
 
@@ -327,9 +327,10 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         }
     }
 
-    private fun updateCallUI(status: CallStatus) {
+    private fun updateCallUI(status: CallStatus, phoneNumber: String? = null) {
         currentCallStatus = status
-        appendLog("System", "Phone status: $status", Color.LIGHT_GRAY)
+        val statusMsg = if (phoneNumber != null) "$status ($phoneNumber)" else "$status"
+        appendLog("System", "Phone status: $statusMsg", Color.LIGHT_GRAY)
         when (status) {
             CallStatus.IDLE -> {
                 callBtn.text = "Call"
