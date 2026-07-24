@@ -53,9 +53,27 @@ class BleServer(
             if (intent?.action == TelephonyManager.ACTION_PHONE_STATE_CHANGED) {
                 val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
                 val number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
-                if (number != null) {
-                    lastIncomingNumber = number
-                    Log.d("BLE", "Captured phone number: $number (State: $state)")
+                
+                Log.d("BLE", "Phone state broadcast: $state, number: $number")
+                
+                when (state) {
+                    TelephonyManager.EXTRA_STATE_RINGING -> {
+                        if (number != null) {
+                            lastIncomingNumber = number
+                            Log.d("BLE", "Captured incoming number: $number")
+                            // If we already notified RINGING with null, notify again with the number
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                val currentSystemState = telephonyManager.callState
+                                if (currentSystemState == TelephonyManager.CALL_STATE_RINGING) {
+                                    sendEvent(BLEProtocol.callStatusEvent(CallStatus.RINGING, number))
+                                }
+                            }
+                        }
+                    }
+                    TelephonyManager.EXTRA_STATE_IDLE -> {
+                        lastIncomingNumber = null
+                        Log.d("BLE", "Call ended, cleared lastIncomingNumber")
+                    }
                 }
             }
         }
