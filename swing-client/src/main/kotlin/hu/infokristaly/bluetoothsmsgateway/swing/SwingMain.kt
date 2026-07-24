@@ -322,7 +322,8 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
         
         if (message.action == "sms_received") {
             val payload = BLECodec.json.decodeFromJsonElement(SmsReceivedPayload.serializer(), message.payload!!)
-            appendLog("SMS", "From ${payload.from}: ${payload.text}", Color(0x2ECC71))
+            val name = findContactName(payload.from)
+            appendLog("SMS", "From ${name} (${payload.from}): ${payload.text}", Color(0x2ECC71))
         } else {
             appendLog("EVENT", "${message.action}", Color.ORANGE)
         }
