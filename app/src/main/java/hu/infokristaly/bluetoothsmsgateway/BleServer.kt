@@ -3,8 +3,10 @@ package hu.infokristaly.bluetoothsmsgateway
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.*
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import androidx.annotation.RequiresPermission
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
@@ -40,9 +42,23 @@ class BleServer(
     }
 
     var storedKeypass: String? = null
+    private var lastIncomingNumber: String? = null
 
     init {
         instance = this
+    }
+
+    private val phoneStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == TelephonyManager.ACTION_PHONE_STATE_CHANGED) {
+                val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
+                val number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
+                if (number != null) {
+                    lastIncomingNumber = number
+                    Log.d("BLE", "Captured phone number: $number (State: $state)")
+                }
+            }
+        }
     }
 
     private val advertiseCallback = object : AdvertiseCallback() {
@@ -97,11 +113,15 @@ class BleServer(
             TelephonyManager.CALL_STATE_OFFHOOK -> CallStatus.OFFHOOK
             else -> CallStatus.IDLE
         }
-        Log.d("BLE", "Call state changed: $status")
+        Log.d("BLE", "Call state changed: $status (Number: $lastIncomingNumber)")
         try {
-            sendEvent(BLEProtocol.callStatusEvent(status))
+            sendEvent(BLEProtocol.callStatusEvent(status, lastIncomingNumber))
         } catch (e: Exception) {
             Log.e("BLE", "Error sending call status: ${e.message}")
+        }
+        
+        if (status == CallStatus.IDLE) {
+            lastIncomingNumber = null
         }
     }
 
@@ -119,6 +139,14 @@ class BleServer(
         // Register telephony callback
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && telephonyCallback != null) {
             telephonyManager.registerTelephonyCallback(context.mainExecutor, telephonyCallback)
+        }
+
+        // Register phone state receiver for incoming numbers
+        val filter = IntentFilter(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(phoneStateReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            context.registerReceiver(phoneStateReceiver, filter)
         }
 
         val gattServer =
@@ -209,6 +237,10 @@ class BleServer(
             telephonyManager.unregisterTelephonyCallback(telephonyCallback)
         }
         
+        try {
+            context.unregisterReceiver(phoneStateReceiver)
+        } catch (e: Exception) {}
+
         connectedDevice?.let { device ->
             if (::server.isInitialized) {
                 Log.d("BLE", "Notifying and cancelling connection to ${device.address} before stopping")
@@ -443,6 +475,7 @@ class BleServer(
                 "make_call" -> {
                     val payload = BLECodec.json.decodeFromJsonElement<SendSmsPayload>(message.payload!!)
                     Log.d("BLE", "Making call to ${payload.phone}")
+                    lastIncomingNumber = payload.phone
                     val intent = Intent(Intent.ACTION_CALL).apply {
                         data = Uri.parse("tel:${payload.phone}")
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
