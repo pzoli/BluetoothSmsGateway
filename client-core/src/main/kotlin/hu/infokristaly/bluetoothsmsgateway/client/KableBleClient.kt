@@ -57,19 +57,20 @@ class KableBleClient(
                 
                 // Now we are ready for a real connection attempt
                 val scanner = Scanner()
-                log("Scanning for $deviceName...")
+                log("Scanning for devices with Service UUID: ${BleProtocol.SERVICE_UUID}...")
                 onStatusChange("Scanning")
                 
                 val advertisement = withTimeoutOrNull(20.seconds) {
                     scanner.advertisements
-                        .onEach { 
-                            val name = it.name ?: "Unknown"
-                            // Only log if it's likely our device or to show progress
-                            if (name.contains("SMS") || name == "Unknown") {
-                                log("DEBUG: Found candidate: $name [${it.identifier}]")
+                        .onEach { ad ->
+                            val name = ad.name ?: "Unknown"
+                            if (ad.uuids.any { it.toString().equals(BleProtocol.SERVICE_UUID.toString(), ignoreCase = true) }) {
+                                log("DEBUG: Found matching device by UUID: $name [${ad.identifier}]")
                             }
                         }
-                        .firstOrNull { (it.name == deviceName) || (it.name?.contains(deviceName) == true) }
+                        .firstOrNull { ad ->
+                            ad.uuids.any { it.toString().equals(BleProtocol.SERVICE_UUID.toString(), ignoreCase = true) }
+                        }
                 }
 
                 if (advertisement == null) {

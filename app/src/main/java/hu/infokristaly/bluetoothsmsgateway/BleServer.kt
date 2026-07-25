@@ -227,15 +227,20 @@ class BleServer(
         adapter.name = "SMSGW"
 
         val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
+            .setIncludeDeviceName(false) // Use false to leave room for UUID
             .addServiceUuid(
                 ParcelUuid(BleProtocol.SERVICE_UUID.toJavaUuid())
             )
             .build()
 
+        val scanResponse = AdvertiseData.Builder()
+            .setIncludeDeviceName(true)
+            .build()
+
         advertiser.startAdvertising(
             settings,
             data,
+            scanResponse,
             advertiseCallback
         )
     }
