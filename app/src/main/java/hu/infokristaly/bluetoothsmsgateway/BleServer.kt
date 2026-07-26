@@ -224,8 +224,6 @@ class BleServer(
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
-        adapter.name = "SMSGW"
-
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(false) // Use false to leave room for UUID
             .addServiceUuid(

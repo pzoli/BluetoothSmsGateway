@@ -13,9 +13,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.ExperimentalUuidApi
 
 @OptIn(ExperimentalUuidApi::class, ExperimentalCoroutinesApi::class, DelicateCoroutinesApi::class)
-class KableBleClient(
-    private val deviceName: String = "SMSGW",
-) {
+class KableBleClient {
     private var peripheral: Peripheral? = null
     private val framer = BLEFramer()
     private val isRunning = AtomicBoolean(false)
@@ -74,12 +72,13 @@ class KableBleClient(
                 }
 
                 if (advertisement == null) {
-                    log("Device $deviceName not found within 20s. Check if phone is Advertising and Bluetooth is ON.")
+                    log("Device with Service UUID ${BleProtocol.SERVICE_UUID} not found within 20s. Check if phone is Advertising and Bluetooth is ON.")
                     onStatusChange("Not Found")
                     return@launch
                 }
 
-                log("Found device: ${advertisement.name} [${advertisement.identifier}]")
+                val actualName = advertisement.name ?: "Unknown Device"
+                log("Found device: $actualName [${advertisement.identifier}]")
                 val p = Peripheral(advertisement)
                 peripheral = p
 
@@ -104,14 +103,14 @@ class KableBleClient(
                     log("DEBUG: State observer flow terminated")
                 }
 
-                log("Connecting to $deviceName (timeout 15s)...")
+                log("Connecting to $actualName (timeout 15s)...")
                 onStatusChange("Connecting")
                 
                 withTimeout(15.seconds) {
                     p.connect()
                 }
                 
-                log("Successfully connected to $deviceName")
+                log("Successfully connected to $actualName")
                 log("NOTE: Encryption is enabled. If this is the first connection, look for a Pairing Request on your devices.")
                 onStatusChange("Connected")
                 
@@ -236,7 +235,7 @@ class KableBleClient(
         scope.launch {
             try {
                 p?.disconnect()
-                log("Disconnected from $deviceName")
+                log("Disconnected from device")
             } catch (e: Exception) {
                 log("Error during disconnect: ${e.message}")
             }
@@ -252,7 +251,7 @@ class KableBleClient(
         peripheral = null
         try {
             p?.disconnect()
-            log("Synchronously disconnected from $deviceName")
+            log("Synchronously disconnected from device")
         } catch (e: Exception) {
             log("Error during synchronous disconnect: ${e.message}")
         }
