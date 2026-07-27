@@ -11,6 +11,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.net.Uri
+import android.content.ComponentName
+import android.text.TextUtils
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -18,6 +20,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -69,9 +72,12 @@ class MainActivity : ComponentActivity() {
                 var isServiceRunning by remember { mutableStateOf(isServiceRunning()) }
                 
                 // Update state periodically or when returning to app
+                var isNotificationAccessGranted by remember { mutableStateOf(isNotificationServiceEnabled()) }
+
                 LaunchedEffect(Unit) {
                     while(true) {
                         isServiceRunning = isServiceRunning()
+                        isNotificationAccessGranted = isNotificationServiceEnabled()
                         kotlinx.coroutines.delay(1000)
                     }
                 }
@@ -80,9 +86,11 @@ class MainActivity : ComponentActivity() {
                     GatewayDashboard(
                         modifier = Modifier.padding(innerPadding),
                         isRunning = isServiceRunning,
+                        isNotificationAccessGranted = isNotificationAccessGranted,
                         onStart = { handleStart() },
                         onStop = { handleStop() },
-                        onScanKey = { scanKeypass() }
+                        onScanKey = { scanKeypass() },
+                        onOpenNotificationSettings = { openNotificationSettings() }
                     )
                 }
             }
@@ -170,6 +178,27 @@ class MainActivity : ComponentActivity() {
 
 
 
+    private fun openNotificationSettings() {
+        startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+    }
+
+    private fun isNotificationServiceEnabled(): Boolean {
+        val pkgName = packageName
+        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+        if (!TextUtils.isEmpty(flat)) {
+            val names = flat.split(":").toTypedArray()
+            for (name in names) {
+                val cn = ComponentName.unflattenFromString(name)
+                if (cn != null) {
+                    if (TextUtils.equals(pkgName, cn.packageName)) {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
+    }
+
     @Suppress("DEPRECATION")
     private fun isServiceRunning(): Boolean {
         val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -186,9 +215,11 @@ class MainActivity : ComponentActivity() {
 fun GatewayDashboard(
     modifier: Modifier = Modifier,
     isRunning: Boolean,
+    isNotificationAccessGranted: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
-    onScanKey: () -> Unit
+    onScanKey: () -> Unit,
+    onOpenNotificationSettings: () -> Unit
 ) {
     Column(
         modifier = modifier.fillMaxSize(),
@@ -199,8 +230,30 @@ fun GatewayDashboard(
             text = "Gateway Status: ${if (isRunning) "RUNNING" else "STOPPED"}",
             style = MaterialTheme.typography.headlineSmall,
             color = if (isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(bottom = 32.dp)
+            modifier = Modifier.padding(bottom = 16.dp)
         )
+
+        if (!isNotificationAccessGranted) {
+            Button(
+                onClick = onOpenNotificationSettings,
+                modifier = Modifier.fillMaxWidth(0.7f).padding(8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+            ) {
+                Text("Enable Notification Access (for RCS)")
+            }
+            Text(
+                "Required for receiving RCS messages",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+        } else {
+            Text(
+                "✓ Notification Access Granted",
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+        }
         
         if (!isRunning) {
             Button(

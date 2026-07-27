@@ -43,6 +43,7 @@ class BleServer(
 
     var storedKeypass: String? = null
     private var lastIncomingNumber: String? = null
+    private val receivedMessageHashes = mutableSetOf<Int>()
 
     init {
         instance = this
@@ -408,6 +409,20 @@ class BleServer(
 
     @SuppressLint("MissingPermission")
     fun sendEvent(message: BLEMessage) {
+        // Simple deduplication for received messages
+        if (message.action == "sms_received") {
+            val hash = message.payload.hashCode()
+            if (receivedMessageHashes.contains(hash)) {
+                Log.d("BLE", "Dropping duplicate message event")
+                return
+            }
+            receivedMessageHashes.add(hash)
+            // Keep the set size manageable
+            if (receivedMessageHashes.size > 100) {
+                receivedMessageHashes.remove(receivedMessageHashes.first())
+            }
+        }
+
         Log.d("BLE", "sendEvent called for action: ${message.action}")
 
         val device = connectedDevice ?: run {
