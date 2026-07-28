@@ -1,6 +1,6 @@
 # BluetoothSmsGateway
 This is an Android Studio bluetooth gateway project for Android phones.
-It is advertise BLE service. You can send SMS message from [MacSMSGateway](https://github.com/pzoli/MacSMSGateway)/Java CLI/Swing client and it can forward incoming SMS to this clients.
+It is advertise BLE service. You can send and receive SMS messages, set/answer/reject voice calls and get contacts usung [MacSMSGateway](https://github.com/pzoli/MacSMSGateway) / Swing client.
 
 The Android service runs in background, so you can close the GUI or lock your screen.
 
@@ -50,3 +50,4 @@ java -jar swing-client/build/libs/swing-client.jar
 
 
 ![BluetoothSMSGWSwingClient.png](docs/BluetoothSMSGWSwingClient.png)
+![BluetoothSMSGWSwingClient-settings.png(docs/BluetoothSMSGWSwingClient-settings.png)
