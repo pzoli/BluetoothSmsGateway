@@ -1,10 +1,10 @@
 # BluetoothSmsGateway
 This is an Android Studio bluetooth gateway project for Android phones.
-It is advertise BLE service. You can send and receive SMS messages, set/answer/reject voice calls and get contacts usung [MacSMSGateway](https://github.com/pzoli/MacSMSGateway) / Swing client.
+It is advertise BLE service. You can use this project with [MacSMSGateway](https://github.com/pzoli/MacSMSGateway)
 
 The Android service runs in background, so you can close the GUI or lock your screen.
 
-The JavaSE terminal client can send/receive SMSs. The JavaSE Swing client can send/receive SMSs also, plus it can download contacts from your phone and can start call, accept/reject calls.
+The JavaSE Swing client can send/receive SMSs, plus it can download contacts from your phone and can set/accept/reject voice calls.
 
 Source is generated with OpenAI ChatGPT 5.5 and Google Gemini 3 flash pre.
 
@@ -24,7 +24,7 @@ You need DBus headers package for Linux:
 sudo apt install libdbus-1-dev
 ```
 
-## Run CLI client
+ # Run CLI client (deprecated)
 ```bash
 ./gradlew :javase-client:run --args="--ble"
 ```
