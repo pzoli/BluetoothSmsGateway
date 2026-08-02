@@ -52,6 +52,15 @@ Generating MacOS app from swing-client
 ./gradlew :swing-client:createMacApp
 open swing-client/build/SMSGW\ Client.app
 ```
+App log
+```bash
+cat /tmp/smsgw_launcher.log
+```
+DMG generator command
+```bash
+./gradlew :swing-client:createMacDmg
+open "swing-client/build/SMSGW Client.dmg"
+```
 
 ![BluetoothSMSGWSwingClient.png](docs/BluetoothSMSGWSwingClient.png)
 ![BluetoothSMSGWSwingClient-settings.png(docs/BluetoothSMSGWSwingClient-settings.png)

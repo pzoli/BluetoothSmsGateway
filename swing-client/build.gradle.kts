@@ -1,3 +1,5 @@
+import java.util.concurrent.TimeUnit
+
 plugins {
     kotlin("jvm")
     application
@@ -30,147 +32,79 @@ tasks.register<JavaExec>("generateAppIcon") {
     args = listOf("--save-icon", iconPath)
 }
 
-tasks.register("createMacApp") {
+tasks.register("packageMacDmg") {
     dependsOn(tasks.shadowJar, tasks.named("generateAppIcon"))
     group = "distribution"
-    description = "Creates a minimal macOS .app bundle to fix the application name issue"
+    description = "Packages the application as a macOS DMG using jpackage"
 
     doLast {
         val appName = "SMSGW Client"
-        val exeName = "SMSGWClient"
-        val bundleDir = layout.buildDirectory.dir("$appName.app").get().asFile
+        val buildDir = layout.buildDirectory.get().asFile
+        val inputDir = File(buildDir, "jpackage-input")
+        val outputDir = File(buildDir, "dist")
+        val pngIcon = layout.buildDirectory.file("appIcon.png").get().asFile
+        val icnsIcon = File(buildDir, "appIcon.icns")
         
-        if (bundleDir.exists()) {
-            bundleDir.deleteRecursively()
-        }
+        if (inputDir.exists()) inputDir.deleteRecursively()
+        if (outputDir.exists()) outputDir.deleteRecursively()
+        inputDir.mkdirs()
+        outputDir.mkdirs()
 
-        val contentsDir = File(bundleDir, "Contents")
-        val macOSDir = File(contentsDir, "MacOS")
-        val resourcesDir = File(contentsDir, "Resources")
-
-        macOSDir.mkdirs()
-        resourcesDir.mkdirs()
-
-        // 1. Copy JAR
+        // 1. Copy the main JAR to input directory
         val jarFile = tasks.shadowJar.get().archiveFile.get().asFile
-        val targetJar = File(resourcesDir, jarFile.name)
-        jarFile.copyTo(targetJar, overwrite = true)
+        jarFile.copyTo(File(inputDir, jarFile.name))
 
-        // 2. Copy Generated Icon
-        val generatedIcon = layout.buildDirectory.file("appIcon.png").get().asFile
-        if (generatedIcon.exists()) {
-            generatedIcon.copyTo(File(resourcesDir, "appIcon.png"), overwrite = true)
+        // 2. Convert PNG to ICNS (macOS specific)
+        println("Converting icon to .icns format...")
+        val iconsetDir = File(buildDir, "appIcon.iconset")
+        if (iconsetDir.exists()) iconsetDir.deleteRecursively()
+        iconsetDir.mkdirs()
+        
+        // Generate different sizes for the iconset
+        val sizes = listOf(16, 32, 64, 128, 256, 512)
+        sizes.forEach { size ->
+            val iconName = if (size <= 512) "icon_${size}x${size}.png" else "icon_${size/2}x${size/2}@2x.png"
+            ProcessBuilder("sips", "-z", size.toString(), size.toString(), pngIcon.absolutePath, "--out", File(iconsetDir, iconName).absolutePath)
+                .start().waitFor()
+        }
+        
+        // Create the final .icns file
+        ProcessBuilder("iconutil", "-c", "icns", iconsetDir.absolutePath, "-o", icnsIcon.absolutePath)
+            .start().waitFor()
+
+        // 3. Find jpackage
+        var jpackageCmd = "jpackage"
+        val homebrewJpackage = File("/opt/homebrew/opt/openjdk/bin/jpackage")
+        if (homebrewJpackage.exists()) {
+            jpackageCmd = homebrewJpackage.absolutePath
         }
 
-        // 3. Create Launcher Script with improved path finding and full logging
-        val launcherScript = File(macOSDir, exeName)
-        val dollar = "$"
-        launcherScript.writeText("""
-            #!/bin/bash
-            # Full debug logging to /tmp/smsgw_launcher.log
-            exec > "/tmp/smsgw_launcher.log" 2>&1
-            set -x
-            
-            echo "Launcher started at ${dollar}(date)"
-            echo "User: ${dollar}USER"
-            echo "Working directory: ${dollar}(pwd)"
-
-            # Expand PATH to include common locations and Homebrew openjdk
-            export PATH="/opt/homebrew/opt/openjdk/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${dollar}PATH"
-            echo "Path: ${dollar}PATH"
-
-            DIR="${dollar}(cd "${dollar}(dirname "${dollar}0")" && pwd)"
-            echo "Script directory: ${dollar}DIR"
-
-            JAR_PATH="${dollar}DIR/../Resources/${jarFile.name}"
-            echo "Looking for JAR at: ${dollar}JAR_PATH"
-            
-            # 1. Try Homebrew openjdk directly (common on Apple Silicon)
-            if [ -x "/opt/homebrew/opt/openjdk/bin/java" ]; then
-                JAVA_CMD="/opt/homebrew/opt/openjdk/bin/java"
-                echo "Found Homebrew openjdk java: ${dollar}JAVA_CMD"
-            fi
-
-            # 2. Try /usr/libexec/java_home
-            if [ -z "${dollar}JAVA_CMD" ] && [ -x "/usr/libexec/java_home" ]; then
-                export JAVA_HOME=${dollar}(/usr/libexec/java_home 2>/dev/null)
-                if [ -n "${dollar}JAVA_HOME" ]; then
-                    JAVA_CMD="${dollar}JAVA_HOME/bin/java"
-                    echo "JAVA_HOME from java_home: ${dollar}JAVA_HOME"
-                fi
-            fi
-            
-            # 3. Search for any JDK in /Library/Java/JavaVirtualMachines if still not found
-            if [ -z "${dollar}JAVA_CMD" ]; then
-                JDK_PATH=${dollar}(ls -d /Library/Java/JavaVirtualMachines/*/Contents/Home 2>/dev/null | tail -n 1)
-                if [ -n "${dollar}JDK_PATH" ]; then
-                    export JAVA_HOME="${dollar}JDK_PATH"
-                    JAVA_CMD="${dollar}JAVA_HOME/bin/java"
-                    echo "Found JDK manually: ${dollar}JAVA_HOME"
-                fi
-            fi
-
-            # 4. Final fallback to java in PATH
-            if [ -z "${dollar}JAVA_CMD" ]; then
-                # Avoid using /usr/bin/java if possible as it's often a stub
-                JAVA_CMD=${dollar}(which java)
-                echo "Falling back to 'which java': ${dollar}JAVA_CMD"
-            fi
-
-            if [ ! -x "${dollar}JAVA_CMD" ]; then
-                osascript -e "display dialog \"Java Runtime not found. Please install Java (JDK).\" buttons {\"OK\"} default button \"OK\" with icon stop"
-                exit 1
-            fi
-            
-            echo "Final JAVA_CMD: ${dollar}JAVA_CMD"
-            "${dollar}JAVA_CMD" -version
-
-            echo "Executing: ${dollar}JAVA_CMD -jar ${dollar}JAR_PATH"
-            cd "${dollar}DIR/../Resources"
-            
-            exec "${dollar}JAVA_CMD" \
-                -Xdock:name="$appName" \
-                -Dapple.awt.application.name="$appName" \
-                -Dcom.apple.mrj.application.apple.menu.about.name="$appName" \
-                --enable-native-access=ALL-UNNAMED \
-                -jar "${jarFile.name}"
-        """.trimIndent().trim())
-        launcherScript.setExecutable(true)
-
-        // 4. Create Info.plist with Icon reference
-        val plistFile = File(contentsDir, "Info.plist")
-        plistFile.writeText("""
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-                <key>CFBundleName</key>
-                <string>$appName</string>
-                <key>CFBundleDisplayName</key>
-                <string>$appName</string>
-                <key>CFBundleIdentifier</key>
-                <string>hu.infokristaly.bluetoothsmsgateway.swing</string>
-                <key>CFBundleVersion</key>
-                <string>1.0</string>
-                <key>CFBundleShortVersionString</key>
-                <string>1.0</string>
-                <key>CFBundlePackageType</key>
-                <string>APPL</string>
-                <key>CFBundleSignature</key>
-                <string>????</string>
-                <key>CFBundleExecutable</key>
-                <string>$exeName</string>
-                <key>CFBundleIconFile</key>
-                <string>appIcon.png</string>
-                <key>NSHighResolutionCapable</key>
-                <true/>
-                <key>LSMinimumSystemVersion</key>
-                <string>10.13</string>
-            </dict>
-            </plist>
-        """.trimIndent().trim())
+        // 4. Run jpackage
+        println("Running jpackage with custom icon...")
+        val process = ProcessBuilder(
+            jpackageCmd,
+            "--type", "dmg",
+            "--dest", outputDir.absolutePath,
+            "--name", appName,
+            "--input", inputDir.absolutePath,
+            "--main-jar", jarFile.name,
+            "--main-class", "hu.infokristaly.bluetoothsmsgateway.swing.LauncherKt",
+            "--icon", icnsIcon.absolutePath,
+            "--app-version", "1.0.0",
+            "--vendor", "InfoKristaly",
+            "--mac-package-identifier", "hu.infokristaly.bluetoothsmsgateway.swing",
+            "--java-options", "-Xdock:name=\"$appName\"",
+            "--java-options", "-Dapple.awt.application.name=\"$appName\"",
+            "--java-options", "--enable-native-access=ALL-UNNAMED"
+        ).inheritIO().start()
         
-        logger.lifecycle("SUCCESS: macOS App Bundle updated at: ${bundleDir.absolutePath}")
+        val exitCode = process.waitFor()
+        if (exitCode != 0) {
+            throw GradleException("jpackage failed with exit code $exitCode")
+        }
+
+        iconsetDir.deleteRecursively()
+        println("SUCCESS: macOS DMG created in: ${outputDir.absolutePath}")
     }
 }
 
