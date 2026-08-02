@@ -47,7 +47,11 @@ or with java jar
 ./gradlew :swing-client:shadowJar
 java -jar swing-client/build/libs/swing-client.jar
 ```
-
+Generating MacOS app from swing-client
+```bash
+./gradlew :swing-client:createMacApp
+open swing-client/build/SMSGW\ Client.app
+```
 
 ![BluetoothSMSGWSwingClient.png](docs/BluetoothSMSGWSwingClient.png)
 ![BluetoothSMSGWSwingClient-settings.png(docs/BluetoothSMSGWSwingClient-settings.png)

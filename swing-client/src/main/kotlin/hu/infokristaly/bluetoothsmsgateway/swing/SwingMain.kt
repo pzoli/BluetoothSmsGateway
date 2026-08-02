@@ -43,6 +43,20 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
 
     private fun setupUI() {
         defaultCloseOperation = DISPOSE_ON_CLOSE
+        val appIcon = AppIcon.createAppIcon(128)
+        iconImage = appIcon
+        
+        // Set taskbar icon for Java 9+ (e.g. macOS Dock, Windows Taskbar)
+        try {
+            if (Taskbar.isTaskbarSupported()) {
+                val taskbar = Taskbar.getTaskbar()
+                if (taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) {
+                    taskbar.iconImage = appIcon
+                }
+            }
+        } catch (e: Exception) {
+            println("Taskbar icon not supported: ${e.message}")
+        }
         
         addWindowListener(object : java.awt.event.WindowAdapter() {
             override fun windowClosing(e: java.awt.event.WindowEvent?) {
@@ -448,13 +462,19 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     }
 }
 
-fun main() {
-    FlatMacDarkLaf.setup()
-    UIManager.put("Component.focusWidth", 1)
-    UIManager.put("Button.arc", 10)
-    UIManager.put("Component.arc", 10)
-    
-    SwingUtilities.invokeLater {
-        SwingClient().isVisible = true
+object SwingMain {
+    fun start(args: Array<String>) {
+        FlatMacDarkLaf.setup()
+        UIManager.put("Component.focusWidth", 1)
+        UIManager.put("Button.arc", 10)
+        UIManager.put("Component.arc", 10)
+
+        SwingUtilities.invokeLater {
+            SwingClient().isVisible = true
+        }
     }
+}
+
+fun main(args: Array<String>) {
+    SwingMain.start(args)
 }
