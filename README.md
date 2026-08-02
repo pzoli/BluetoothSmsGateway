@@ -58,7 +58,7 @@ cat /tmp/smsgw_launcher.log
 ```
 DMG generator command
 ```bash
-./gradlew :swing-client:createMacDmg
+./gradlew :swing-client:packageMacDmg
 open "swing-client/build/SMSGW Client.dmg"
 ```
 
