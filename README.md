@@ -63,4 +63,4 @@ open "swing-client/build/SMSGW Client.dmg"
 ```
 
 ![BluetoothSMSGWSwingClient.png](docs/BluetoothSMSGWSwingClient.png)
-![BluetoothSMSGWSwingClient-settings.png(docs/BluetoothSMSGWSwingClient-settings.png)
+![BluetoothSMSGWSwingClient-settings.png](docs/BluetoothSMSGWSwingClient-settings.png)
