@@ -6,22 +6,28 @@ plugins {
     alias(libs.plugins.shadow)
 }
 
+val isMac = System.getProperty("os.name").lowercase().contains("mac")
+
 application {
     mainClass.set("hu.infokristaly.bluetoothsmsgateway.swing.LauncherKt")
-    applicationDefaultJvmArgs = listOf(
-        "-Xdock:name=SMSGW Client",
-        "-Dapple.awt.application.name=SMSGW Client",
-        "-Dcom.apple.mrj.application.apple.menu.about.name=SMSGW Client"
-    )
+    applicationDefaultJvmArgs = buildList {
+        if (isMac) {
+            add("-Xdock:name=SMSGW Client")
+            add("-Dapple.awt.application.name=SMSGW Client")
+            add("-Dcom.apple.mrj.application.apple.menu.about.name=SMSGW Client")
+        }
+    }
 }
 
 tasks.withType<JavaExec> {
-    jvmArgs = listOf(
-        "-Xdock:name=SMSGW Client",
-        "-Dapple.awt.application.name=SMSGW Client",
-        "-Dcom.apple.mrj.application.apple.menu.about.name=SMSGW Client",
-        "--enable-native-access=ALL-UNNAMED"
-    )
+    jvmArgs = buildList {
+        if (isMac) {
+            add("-Xdock:name=SMSGW Client")
+            add("-Dapple.awt.application.name=SMSGW Client")
+            add("-Dcom.apple.mrj.application.apple.menu.about.name=SMSGW Client")
+        }
+        add("--enable-native-access=ALL-UNNAMED")
+    }
 }
 
 tasks.register<JavaExec>("generateAppIcon") {
