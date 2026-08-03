@@ -16,6 +16,16 @@
 # debugging stack traces.
 #-keepattributes SourceFile,LineNumberTable
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# ML Kit and Google Play Services rules for QR Scanning
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_barcode.** { *; }
+-keep class com.google.android.gms.tvision.** { *; }
+
+# Keep all ComponentRegistrars to avoid NoSuchMethodException during instantiation
+-keep class * implements com.google.firebase.components.ComponentRegistrar {
+    <init>();
+}
+
+# Keep Barcode common classes
+-keep class com.google.mlkit.vision.barcode.** { *; }
+-keep class com.google.mlkit.vision.common.** { *; }
