@@ -62,5 +62,6 @@ DMG generator command
 open "swing-client/build/SMSGW Client.dmg"
 ```
 
+## Screenshots
 ![BluetoothSMSGWSwingClient.png](docs/BluetoothSMSGWSwingClient.png)
 ![BluetoothSMSGWSwingClient-settings.png](docs/BluetoothSMSGWSwingClient-settings.png)
