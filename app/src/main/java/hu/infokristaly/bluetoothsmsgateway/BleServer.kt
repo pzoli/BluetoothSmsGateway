@@ -188,7 +188,7 @@ class BleServer(
         val command =
             BluetoothGattCharacteristic(
                 BleProtocol.COMMAND_UUID.toJavaUuid(),
-                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
+                BluetoothGattCharacteristic.PROPERTY_WRITE,
                 BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED
             )
 
@@ -197,7 +197,7 @@ class BleServer(
             BluetoothGattCharacteristic(
                 BleProtocol.EVENT_UUID.toJavaUuid(),
                 BluetoothGattCharacteristic.PROPERTY_NOTIFY,
-                0
+                BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
             )
 
         // Add CCCD descriptor to the event characteristic
@@ -255,13 +255,16 @@ class BleServer(
 
     @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE])
     fun stop() {
+        Log.d("BLE", "BleServer.stop() called. Stack trace: ${Log.getStackTraceString(Throwable())}")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && telephonyCallback != null) {
             telephonyManager.unregisterTelephonyCallback(telephonyCallback)
         }
         
         try {
             context.unregisterReceiver(phoneStateReceiver)
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Log.e("BLE", "Error unregistering phoneStateReceiver: ${e.message}")
+        }
 
         connectedDevice?.let { device ->
             if (::server.isInitialized) {
@@ -274,12 +277,13 @@ class BleServer(
                     server.cancelConnection(device)
                     Thread.sleep(200)
                 } catch (e: Exception) {
-                    Log.e("BLE", "Error during stop sequence: ${e.message}")
+                    Log.e("BLE", "Error during stop sequence for device ${device.address}: ${e.message}")
                 }
             }
         }
 
         if (::server.isInitialized) {
+            Log.d("BLE", "Closing GATT server")
             server.close()
         }
         stopAdvertising()
@@ -312,13 +316,27 @@ class BleServer(
                 status: Int,
                 newState: Int
             ) {
-                Log.d("BLE", "onConnectionStateChange: device=${device.address} status=$status (HCI error if non-zero) newState=$newState")
+                val bondState = when(device.bondState) {
+                    BluetoothDevice.BOND_BONDED -> "BONDED"
+                    BluetoothDevice.BOND_BONDING -> "BONDING"
+                    BluetoothDevice.BOND_NONE -> "NONE"
+                    else -> "UNKNOWN"
+                }
+                Log.d("BLE", "onConnectionStateChange: device=${device.address} bondState=$bondState status=$status (HCI error if non-zero) newState=$newState")
+                
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     if (connectedDevice != null && connectedDevice?.address != device.address) {
                         Log.w("BLE", "New device connecting (${device.address}) while ${connectedDevice?.address} still connected. Updating...")
                     }
                     connectedDevice = device
                     stopAdvertising()
+                    
+                    if (device.bondState == BluetoothDevice.BOND_NONE) {
+                        Log.i("BLE", "Device ${device.address} is not bonded. Initiating pairing (createBond)...")
+                        device.createBond()
+                    } else {
+                        Log.i("BLE", "Device ${device.address} is already bonded (${bondState}).")
+                    }
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     if (device.address == connectedDevice?.address) {
                         connectedDevice = null

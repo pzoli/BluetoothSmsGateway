@@ -126,6 +126,9 @@ class KableBleClient {
                 launch {
                     try {
                         p.observe(eventChar)
+                            .onStart { 
+                                log("Client is now ready for commands.")
+                            }
                             .collect { data ->
                                 log("DEBUG: Received raw packet (${data.size} bytes)")
                                 val messages = framer.append(data)
@@ -149,8 +152,6 @@ class KableBleClient {
                         log("Observation stream error: ${e.message}")
                     }
                 }
-
-                log("Client is now ready for commands.")
 
             } catch (e: TimeoutCancellationException) {
                 log("Connection timed out. Check if phone is in range.")
@@ -200,7 +201,10 @@ class KableBleClient {
                             }
                             
                             withTimeout(5.seconds) {
-                                p.write(commandChar, packet, WriteType.WithoutResponse)
+                                // Use WithResponse for the first packet to ensure pairing is triggered
+                                // Subsequent packets can be WithoutResponse for speed
+                                val writeType = if (index == 0) WriteType.WithResponse else WriteType.WithoutResponse
+                                p.write(commandChar, packet, writeType)
                             }
                             success = true
                         } catch (e: Exception) {
