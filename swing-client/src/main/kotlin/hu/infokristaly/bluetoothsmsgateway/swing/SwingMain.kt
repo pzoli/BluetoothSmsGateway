@@ -449,7 +449,12 @@ class SwingClient : JFrame("Bluetooth SMS Gateway") {
     private fun appendLog(tag: String, text: String, color: Color) {
         val doc = logPane.styledDocument
         val attr = SimpleAttributeSet()
-        
+        val time = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
+
+        StyleConstants.setBold(attr, false)
+        StyleConstants.setForeground(attr, Color.GRAY)
+        doc.insertString(doc.length, "[$time] ", attr)
+
         StyleConstants.setBold(attr, true)
         StyleConstants.setForeground(attr, color)
         doc.insertString(doc.length, "[$tag] ", attr)
