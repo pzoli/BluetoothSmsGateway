@@ -15,9 +15,9 @@ android {
     defaultConfig {
         applicationId = "hu.infokristaly.bluetoothsmsgateway"
         minSdk = 29
-        targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        targetSdk = 36
+        versionCode = 3
+        versionName = "1.0c"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
