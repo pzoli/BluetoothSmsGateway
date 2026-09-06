@@ -166,6 +166,12 @@ tasks.register("packageMacDmg") {
     }
 }
 
+tasks.register("createMacApp") {
+    dependsOn(tasks.named("packageMacDmg"))
+    group = "distribution"
+    description = "Alias for packageMacDmg to package the application as a macOS DMG"
+}
+
 // Fixed for shadow plugin compatibility with modern Gradle
 tasks.shadowJar {
     archiveFileName.set("swing-client.jar")
