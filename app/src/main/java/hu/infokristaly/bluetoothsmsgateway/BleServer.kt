@@ -465,20 +465,43 @@ class BleServer(
 
         Thread {
             packets.forEachIndexed { index, packet ->
-                Log.d("BLE", "Sending packet ${index + 1}/${packets.size}: ${packet.size} bytes")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    val result = server.notifyCharacteristicChanged(device, characteristic, false, packet)
-                    Log.d("BLE", "notifyCharacteristicChanged (API 33+) result: $result")
-                } else {
-                    @Suppress("DEPRECATION")
-                    characteristic.value = packet
-                    val result = server.notifyCharacteristicChanged(device, characteristic, false)
-                    Log.d("BLE", "notifyCharacteristicChanged (Legacy) result: $result")
+                var success = false
+                var attempts = 0
+                val maxAttempts = 5
+
+                while (!success && attempts < maxAttempts) {
+                    attempts++
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        val result = server.notifyCharacteristicChanged(device, characteristic, false, packet)
+                        success = (result == BluetoothStatusCodes.SUCCESS)
+                        if (!success) {
+                            Log.w("BLE", "notifyCharacteristicChanged (API 33+) failed with status $result (attempt $attempts/$maxAttempts)")
+                        }
+                    } else {
+                        @Suppress("DEPRECATION")
+                        characteristic.value = packet
+                        val result = server.notifyCharacteristicChanged(device, characteristic, false)
+                        success = result
+                        if (!success) {
+                            Log.w("BLE", "notifyCharacteristicChanged (Legacy) failed (attempt $attempts/$maxAttempts)")
+                        }
+                    }
+
+                    if (!success && attempts < maxAttempts) {
+                        try {
+                            Thread.sleep(20)
+                        } catch (_: InterruptedException) {}
+                    }
                 }
+
+                if (!success) {
+                    Log.e("BLE", "Failed to send packet ${index + 1}/${packets.size} after $maxAttempts attempts!")
+                }
+
                 // Small delay to prevent congestion on older devices or fast packets
                 if (packets.size > 1) {
                     try {
-                        Thread.sleep(100)
+                        Thread.sleep(10)
                     } catch (_: InterruptedException) {}
                 }
             }

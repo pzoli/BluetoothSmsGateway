@@ -3,7 +3,7 @@ package hu.infokristaly.bluetoothsmsgateway.ble
 import java.io.ByteArrayOutputStream
 
 class BLEFramer(
-    private val maxBufferSize: Int = 64 * 1024
+    private val maxBufferSize: Int = 16 * 1024 * 1024
 ) {
     private val buffer = ByteArrayOutputStream()
 
@@ -12,6 +12,7 @@ class BLEFramer(
         data: ByteArray
     ): List<String> {
         if (buffer.size() + data.size > maxBufferSize) {
+            System.err.println("BLEFramer: Buffer size limit ($maxBufferSize bytes) exceeded. Resetting buffer.")
             buffer.reset()
         }
         buffer.write(data)

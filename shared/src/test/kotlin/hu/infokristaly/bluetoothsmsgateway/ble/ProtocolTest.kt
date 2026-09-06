@@ -40,4 +40,26 @@ class ProtocolTest {
         val decoded = BLECodec.decode(decodedMessages[0])
         assertEquals(original.id, decoded.id)
     }
+
+    @Test
+    fun testLargeContactsFragmentation() {
+        val contactsList = (1..1000).map { i ->
+            Contact("Contact Name $i", listOf("+363012345$i", "+367098765$i"))
+        }
+        val original = BLEProtocol.contactsResponse(999L, contactsList)
+        val packets = BLECodec.encodeToByteArrayList(original)
+
+        assert(packets.size > 500)
+
+        val framer = BLEFramer()
+        var decodedMessages = emptyList<String>()
+        packets.forEach {
+            decodedMessages += framer.append(it)
+        }
+
+        assertEquals(1, decodedMessages.size)
+        val decoded = BLECodec.decode(decodedMessages[0])
+        assertEquals(original.id, decoded.id)
+        assertEquals(original.action, decoded.action)
+    }
 }
