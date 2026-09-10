@@ -1,0 +1,17 @@
+[versions]
+junit = "4.13.2"
+kotlinxSerializationJson = "1.11.0"
+kotlin = "2.4.10"
+kable = "0.44.1"
+shadow = "8.3.5"
+
+[libraries]
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+kable-core = { group = "com.juul.kable", name = "kable-core", version.ref = "kable" }
+kable-btleplug = { group = "com.juul.kable", name = "kable-btleplug-ffi", version.ref = "kable" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+shadow = { id = "com.gradleup.shadow", version = "9.6.0" }
