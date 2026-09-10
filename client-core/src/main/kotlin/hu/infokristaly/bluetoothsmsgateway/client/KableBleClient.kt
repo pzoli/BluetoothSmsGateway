@@ -32,6 +32,7 @@ class KableBleClient {
     }
 
     private var activeJob: Job? = null
+    private val recentDisconnectedIdentifiers = mutableSetOf<String>()
 
     fun start(
         onStatusChange: (String) -> Unit = {},
@@ -50,7 +51,7 @@ class KableBleClient {
                         peripheral!!.disconnect()
                     } catch (_: Exception) {}
                     peripheral = null
-                    delay(500.milliseconds) 
+                    delay(1500.milliseconds) 
                 }
                 
                 // Now we are ready for a real connection attempt
@@ -58,6 +59,7 @@ class KableBleClient {
                 log("Scanning for devices with Service UUID: ${BleProtocol.SERVICE_UUID}...")
                 onStatusChange("Scanning")
                 
+                val startTime = System.currentTimeMillis()
                 val advertisement = withTimeoutOrNull(20.seconds) {
                     scanner.advertisements
                         .onEach { ad ->
@@ -67,7 +69,12 @@ class KableBleClient {
                             }
                         }
                         .firstOrNull { ad ->
-                            ad.uuids.any { it.toString().equals(BleProtocol.SERVICE_UUID.toString(), ignoreCase = true) }
+                            val matchesUuid = ad.uuids.any { it.toString().equals(BleProtocol.SERVICE_UUID.toString(), ignoreCase = true) }
+                            if (!matchesUuid) return@firstOrNull false
+                            val idStr = ad.identifier.toString()
+                            val isRecent = recentDisconnectedIdentifiers.contains(idStr)
+                            val elapsed = System.currentTimeMillis() - startTime
+                            if (isRecent && elapsed < 15000) false else true
                         }
                 }
 
@@ -111,7 +118,7 @@ class KableBleClient {
                 }
                 
                 log("Successfully connected to $actualName")
-                log("NOTE: Encryption is enabled. If this is the first connection, look for a Pairing Request on your devices.")
+                log("NOTE: Encryption is disabled (experimental mode).")
                 onStatusChange("Connected")
                 
                 isRunning.set(true)
@@ -235,10 +242,18 @@ class KableBleClient {
         activeJob = null
         framer.reset()
         val p = peripheral
+        if (p != null) {
+            recentDisconnectedIdentifiers.add(p.identifier.toString())
+            if (recentDisconnectedIdentifiers.size > 5) {
+                val first = recentDisconnectedIdentifiers.first()
+                recentDisconnectedIdentifiers.remove(first)
+            }
+        }
         peripheral = null
         scope.launch {
             try {
                 p?.disconnect()
+                delay(1500.milliseconds)
                 log("Disconnected from device")
             } catch (e: Exception) {
                 log("Error during disconnect: ${e.message}")

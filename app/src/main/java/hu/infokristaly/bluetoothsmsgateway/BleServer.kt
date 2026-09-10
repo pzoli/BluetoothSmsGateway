@@ -189,7 +189,7 @@ class BleServer(
             BluetoothGattCharacteristic(
                 BleProtocol.COMMAND_UUID.toJavaUuid(),
                 BluetoothGattCharacteristic.PROPERTY_WRITE,
-                BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED
+                BluetoothGattCharacteristic.PERMISSION_WRITE
             )
 
 
@@ -197,14 +197,14 @@ class BleServer(
             BluetoothGattCharacteristic(
                 BleProtocol.EVENT_UUID.toJavaUuid(),
                 BluetoothGattCharacteristic.PROPERTY_NOTIFY,
-                BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
+                BluetoothGattCharacteristic.PERMISSION_READ
             )
 
         // Add CCCD descriptor to the event characteristic
         // This is REQUIRED for clients to subscribe to notifications
         val descriptor = BluetoothGattDescriptor(
             CCCD_UUID,
-            BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED
+            BluetoothGattDescriptor.PERMISSION_WRITE
         )
         event.addDescriptor(descriptor)
 
@@ -332,8 +332,7 @@ class BleServer(
                     stopAdvertising()
                     
                     if (device.bondState == BluetoothDevice.BOND_NONE) {
-                        Log.i("BLE", "Device ${device.address} is not bonded. Initiating pairing (createBond)...")
-                        device.createBond()
+                        Log.i("BLE", "Device ${device.address} is not bonded (Encryption disabled for experiment).")
                     } else {
                         Log.i("BLE", "Device ${device.address} is already bonded (${bondState}).")
                     }
