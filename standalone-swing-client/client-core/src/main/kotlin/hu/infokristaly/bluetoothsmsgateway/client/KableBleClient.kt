@@ -18,13 +18,13 @@ import kotlin.uuid.ExperimentalUuidApi
 @OptIn(ExperimentalUuidApi::class, ExperimentalCoroutinesApi::class, DelicateCoroutinesApi::class)
 class KableBleClient {
     private companion object {
-        val CONNECT_TIMEOUT = 30.seconds
-        val NOTIFICATION_SUBSCRIPTION_TIMEOUT = 10.seconds
+        val CONNECT_TIMEOUT = 60.seconds
+        val NOTIFICATION_SUBSCRIPTION_TIMEOUT = 20.seconds
         // The Android GATT server creates the bond asynchronously when a new
         // central connects. Its CCCD is encrypted, so writing it immediately
         // can race the pairing handshake and be rejected with
         // GATT_INSUF_AUTHENTICATION.
-        val ENCRYPTION_SETTLE_DELAY = 0.seconds
+        val ENCRYPTION_SETTLE_DELAY = 5.seconds
     }
 
     @Volatile
@@ -62,23 +62,21 @@ class KableBleClient {
 
     private var activeJob: Job? = null
     private var disconnectJob: Job? = null
-    private val recentDisconnectedIdentifiers = mutableSetOf<String>()
 
     private fun isCurrent(generation: Long, candidate: Peripheral) =
         connectionGeneration.get() == generation && peripheral === candidate
 
     private suspend fun disconnect(candidate: Peripheral) {
-        recentDisconnectedIdentifiers.add(candidate.identifier.toString())
-        if (recentDisconnectedIdentifiers.size > 5) {
-            val first = recentDisconnectedIdentifiers.first()
-            recentDisconnectedIdentifiers.remove(first)
-        }
         // A timeout/cancel leaves the caller's coroutine cancelled. BlueZ still
         // needs an explicit disconnect request in that case; otherwise its native
         // GATT session can survive and poison the next connection attempt.
         withContext(NonCancellable) {
             try {
-                candidate.disconnect()
+                withTimeout(3.seconds) {
+                    log("DEBUG: Triggering peripheral disconnect...")
+                    candidate.disconnect()
+                    log("DEBUG: Peripheral disconnect finished.")
+                }
             } catch (e: Exception) {
                 log("Error during disconnect: ${e.message}")
             } finally {
@@ -87,7 +85,11 @@ class KableBleClient {
                 // also need disposal, otherwise a later connection can reuse
                 // a stale GATT/notification operation ("In Progress").
                 try {
-                    candidate.close()
+                    withTimeout(3.seconds) {
+                        log("DEBUG: Closing peripheral resources...")
+                        candidate.close()
+                        log("DEBUG: Peripheral resources closed.")
+                    }
                 } catch (e: Exception) {
                     log("Error closing peripheral: ${e.message}")
                 }
@@ -117,8 +119,17 @@ class KableBleClient {
                 // BlueZ rejects StartNotify with "In Progress" when a new connection
                 // races the previous connection's unsubscribe/disconnect sequence.
                 // Never scan again until that sequence has fully settled.
-                previousConnectionJob?.join()
-                previousDisconnectJob?.join()
+                withTimeoutOrNull(5.seconds) {
+                    previousConnectionJob?.join()
+                    previousDisconnectJob?.join()
+                } ?: run {
+                    log("WARNING: Previous connection cleanup timed out. Forcing background disposal.")
+                    // Try to force close old peripheral if it still exists
+                    val oldP = peripheral
+                    if (oldP != null) {
+                        GlobalScope.launch { disconnect(oldP) }
+                    }
+                }
 
                 if (connectionGeneration.get() != generation) return@launch
 
@@ -127,37 +138,50 @@ class KableBleClient {
                     val oldPeripheral = peripheral!!
                     peripheral = null
                     disconnect(oldPeripheral)
-                    delay(1500.milliseconds)
+                    delay(3000.milliseconds)
                 }
 
                 if (connectionGeneration.get() != generation) return@launch
 
+                // Give the OS a moment to settle after a manual stop or previous cleanup
+                delay(3000.milliseconds)
+
                 // Now we are ready for a real connection attempt
                 val scanner = Scanner()
-                log("Scanning for devices with Service UUID: ${BleProtocol.SERVICE_UUID}...")
+                log("Scanning for devices with Service UUID: ${BleProtocol.SERVICE_UUID} (RSSI selection enabled)...")
                 onStatusChange("Scanning")
                 
-                val startTime = System.currentTimeMillis()
-                val advertisement = withTimeoutOrNull(20.seconds) {
+                val scanStartTime = System.currentTimeMillis()
+                val seenDuringScan = mutableMapOf<String, Pair<Advertisement, Int>>() // ID -> (Ad, Count)
+                val lastSeenTime = mutableMapOf<String, Long>()
+                
+                withTimeoutOrNull(5.seconds) {
                     scanner.advertisements
+                        .filter { ad ->
+                            ad.uuids.any { it.toString().equals(BleProtocol.SERVICE_UUID.toString(), ignoreCase = true) }
+                        }
                         .onEach { ad ->
-                            val name = ad.name ?: "Unknown"
-                            if (ad.uuids.any { it.toString().equals(BleProtocol.SERVICE_UUID.toString(), ignoreCase = true) }) {
-                                log("DEBUG: Found matching device by UUID: $name [${ad.identifier}]")
-                            }
+                            val id = ad.identifier.toString()
+                            val current = seenDuringScan[id]
+                            seenDuringScan[id] = ad to ((current?.second ?: 0) + 1)
+                            lastSeenTime[id] = System.currentTimeMillis()
+                            log("DEBUG: Seen matching device: ${ad.name} [$id] RSSI: ${ad.rssi}")
                         }
-                        .firstOrNull { ad ->
-                            val matchesUuid = ad.uuids.any { it.toString().equals(BleProtocol.SERVICE_UUID.toString(), ignoreCase = true) }
-                            if (!matchesUuid) return@firstOrNull false
-                            val idStr = ad.identifier.toString()
-                            val isRecent = recentDisconnectedIdentifiers.contains(idStr)
-                            val elapsed = System.currentTimeMillis() - startTime
-                            if (isRecent && elapsed < 15000) false else true
-                        }
+                        .collect()
+                }
+                
+                seenDuringScan.forEach { (id, pair) ->
+                    log("DEBUG: ID $id seen ${pair.second} times. Last RSSI: ${pair.first.rssi}")
                 }
 
+                // Pick the one seen most recently. If tied, pick highest RSSI.
+                val advertisement = seenDuringScan.keys
+                    .sortedWith(compareByDescending<String> { lastSeenTime[it] }.thenByDescending { seenDuringScan[it]?.first?.rssi })
+                    .firstOrNull()
+                    ?.let { seenDuringScan[it]?.first }
+
                 if (advertisement == null) {
-                    log("Device with Service UUID ${BleProtocol.SERVICE_UUID} not found within 20s. Check if phone is Advertising and Bluetooth is ON.")
+                    log("Device with Service UUID ${BleProtocol.SERVICE_UUID} not found. Check if phone is Advertising and Bluetooth is ON.")
                     onStatusChange("Not Found")
                     return@launch
                 }
@@ -201,22 +225,63 @@ class KableBleClient {
                     log("DEBUG: State observer flow terminated")
                 }
 
-                log("Connecting to $actualName (timeout ${CONNECT_TIMEOUT.inWholeSeconds}s)...")
+                log("Connecting to $actualName (timeout 20s for physical link)...")
                 onStatusChange("Connecting")
                 
-                val connectionScope = withTimeout(CONNECT_TIMEOUT) {
+                val connectionScope = withTimeout(20.seconds) {
                     val connectedScope = p.connect()
                     // On BlueZ connect() can return before all state transitions have
                     // reached the StateFlow. Do not accept commands until Connected.
                     p.state.filterIsInstance<State.Connected>().first()
+                    // Extra stabilization: wait 500ms and check if still connected
+                    delay(500.milliseconds)
+                    if (p.state.value !is State.Connected) throw IllegalStateException("Link dropped immediately after connect")
                     connectedScope
                 }
 
                 if (!isCurrent(generation, p)) return@launch
                 
-                log("Successfully connected to $actualName")
-                log("NOTE: Encryption is disabled (experimental mode).")
+                log("Successfully connected to $actualName, settling...")
                 connectionReady = true
+                delay(3000.milliseconds) // Post-connect settlement delay
+
+                val commandChar = characteristicOf(
+                    service = BleProtocol.SERVICE_UUID,
+                    characteristic = BleProtocol.COMMAND_UUID
+                )
+
+                // Explicitly trigger pairing on Linux by reading an encrypted characteristic
+                // Retry up to 3 times to allow other profiles (HFP/A2DP) to settle
+                var authSuccess = false
+                for (attempt in 1..3) {
+                    log("Reading Auth Challenge (attempt $attempt/3) to trigger pairing request on client OS...")
+                    try {
+                        withTimeout(5.seconds) {
+                            p.read(commandChar)
+                        }
+                        log("Auth read successful, pairing should be active.")
+                        authSuccess = true
+                        break
+                    } catch (e: Exception) {
+                        log("Auth read attempt $attempt failed: ${e.message}")
+                        
+                        if (p.state.value !is State.Connected || e.message?.contains("v1=Not connected", ignoreCase = true) == true) {
+                            log("FATAL: Link lost or v1=Not connected error. Aborting.")
+                            reportDisconnected(p, e.message ?: "link lost")
+                            disconnect(p)
+                            return@launch
+                        }
+
+                        if (attempt < 3) {
+                            log("Retrying Auth read in 2s...")
+                            delay(2000.milliseconds)
+                        }
+                    }
+                }
+
+                if (!authSuccess) {
+                    log("WARNING: Auth read failed after 3 attempts, link is still alive. Proceeding with caution.")
+                }
 
                 // Android starts bonding asynchronously in its GATT-server
                 // connection callback. Do not issue the encrypted CCCD write
@@ -378,7 +443,7 @@ class KableBleClient {
                 }
                 log("Command sent successfully (${packets.size} packets)")
             } catch (e: Exception) {
-                if (e.message?.contains("not connected", ignoreCase = true) == true) {
+                if (e.message?.contains("not connected", ignoreCase = true) == true || e.message?.contains("v1=Not connected", ignoreCase = true) == true) {
                     reportDisconnected(p, e.message ?: e.javaClass.simpleName)
                 }
                 log("Error sending command: ${e.message}")

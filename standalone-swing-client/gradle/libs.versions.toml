@@ -2,7 +2,7 @@
 junit = "4.13.2"
 kotlinxSerializationJson = "1.11.0"
 kotlin = "2.4.10"
-kable = "0.44.1"
+kable = "0.44.3"
 shadow = "8.3.5"
 
 [libraries]

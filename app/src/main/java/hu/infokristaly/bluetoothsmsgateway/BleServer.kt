@@ -188,8 +188,8 @@ class BleServer(
         val command =
             BluetoothGattCharacteristic(
                 BleProtocol.COMMAND_UUID.toJavaUuid(),
-                BluetoothGattCharacteristic.PROPERTY_WRITE,
-                BluetoothGattCharacteristic.PERMISSION_WRITE
+                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_READ,
+                BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED or BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
             )
 
 
@@ -197,14 +197,15 @@ class BleServer(
             BluetoothGattCharacteristic(
                 BleProtocol.EVENT_UUID.toJavaUuid(),
                 BluetoothGattCharacteristic.PROPERTY_NOTIFY,
-                BluetoothGattCharacteristic.PERMISSION_READ
+                BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
             )
 
         // Add CCCD descriptor to the event characteristic
         // This is REQUIRED for clients to subscribe to notifications
+        // Keeping this ENCRYPTED triggers pairing when the client tries to enable notifications
         val descriptor = BluetoothGattDescriptor(
             CCCD_UUID,
-            BluetoothGattDescriptor.PERMISSION_WRITE
+            BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED
         )
         event.addDescriptor(descriptor)
 
@@ -326,24 +327,33 @@ class BleServer(
                 
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     if (connectedDevice != null && connectedDevice?.address != device.address) {
-                        Log.w("BLE", "New device connecting (${device.address}) while ${connectedDevice?.address} still connected. Updating...")
+                        Log.w("BLE", "New device connected (${device.address}) while ${connectedDevice?.address} still tracked. Overriding.")
                     }
                     connectedDevice = device
                     stopAdvertising()
                     
                     if (device.bondState == BluetoothDevice.BOND_NONE) {
-                        Log.i("BLE", "Device ${device.address} is not bonded (Encryption disabled for experiment).")
+                        Log.i("BLE", "Device ${device.address} is not bonded. Pairing might be triggered.")
                     } else {
                         Log.i("BLE", "Device ${device.address} is already bonded (${bondState}).")
                     }
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     if (device.address == connectedDevice?.address) {
                         connectedDevice = null
-                        Log.d("BLE", "Main device disconnected: ${device.address}")
+                        Log.d("BLE", "Main device disconnected: ${device.address} (status=$status)")
+                    } else {
+                        Log.d("BLE", "Other device disconnected: ${device.address} (status=$status)")
                     }
                     // Restart advertising even if status was not success
-                    Log.d("BLE", "Restarting advertising after disconnect...")
-                    startAdvertising()
+                    Log.d("BLE", "Restarting advertising after disconnect (delay 1s)...")
+                    commandExecutor.execute {
+                        try {
+                            Thread.sleep(1000)
+                            if (connectedDevice == null) { // Double check if someone else connected in the meantime
+                                startAdvertising()
+                            }
+                        } catch (_: Exception) {}
+                    }
                 }
             }
 

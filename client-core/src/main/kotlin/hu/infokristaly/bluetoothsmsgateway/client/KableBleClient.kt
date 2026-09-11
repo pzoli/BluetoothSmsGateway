@@ -118,7 +118,6 @@ class KableBleClient {
                 }
                 
                 log("Successfully connected to $actualName")
-                log("NOTE: Encryption is disabled (experimental mode).")
                 onStatusChange("Connected")
                 
                 isRunning.set(true)
